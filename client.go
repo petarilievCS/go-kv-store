@@ -7,30 +7,44 @@ import (
 	"os"
 )
 
+const (
+	ServerAddress = ":8080"
+	QuitCommand   = "QUIT"
+)
+
+func connectToServer() (net.Conn, error) {
+	return net.Dial("tcp", ServerAddress)
+}
+
 func main() {
-	conn, err := net.Dial("tcp", ":8080")
+	conn, err := connectToServer()
 	if err != nil {
-		panic(err)
+		fmt.Println("Failed to connect to server:", err)
+		return
 	}
 	defer conn.Close()
 	fmt.Println("Connected to server.")
 
-	serverOutput := bufio.NewReader(conn)
+	serverReader := bufio.NewReader(conn)
+	stdinReader := bufio.NewReader(os.Stdin)
 	for {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter command: ")
-		input, err := reader.ReadString('\n')
+		input, err := stdinReader.ReadString('\n')
 		if err != nil {
-			fmt.Println("Error reading input")
+			fmt.Println("Error reading input:", err)
+			continue
 		}
 
-		conn.Write([]byte(input))
-		serverResponse, err := serverOutput.ReadString('\n')
+		_, err = conn.Write([]byte(input))
 		if err != nil {
-			fmt.Print("Server Error:", err)
-		} else {
-			fmt.Print(serverResponse)
+			fmt.Println("Error sending command:", err)
 		}
 
+		response, err := serverReader.ReadString('\n')
+		if err != nil {
+			fmt.Printf("Error reading message:", err)
+			continue
+		}
+		fmt.Print(response)
 	}
 }
