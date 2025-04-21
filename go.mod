@@ -1,3 +1,3 @@
-module github.com/petariliev/go-project
+module github.com/petariliev/kvstore
 
-go 1.21 
+go 1.21

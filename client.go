@@ -1,56 +1,20 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"net"
-	"os"
-	"strings"
+	"github.com/petariliev/kvstore/client"
+	"log"
 )
-
-const (
-	ServerAddress = ":8080"
-	QuitCommand   = "QUIT"
-)
-
-func connectToServer() (net.Conn, error) {
-	return net.Dial("tcp", ServerAddress)
-}
 
 func main() {
-	conn, err := connectToServer()
+	kvClient, err := client.New()
 	if err != nil {
-		fmt.Println("Failed to connect to server:", err)
-		return
+		log.Fatalf("Failed to create client: %v", err)
 	}
-	defer conn.Close()
+	defer kvClient.Close()
+
 	fmt.Println("Connected to server")
-
-	serverReader := bufio.NewReader(conn)
-	stdinReader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print("kv> ")
-		input, err := stdinReader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading input:", err)
-			continue
-		}
-
-		input = strings.TrimSpace(input)
-		if input == "exit" {
-			break
-		}
-
-		_, err = conn.Write([]byte(input))
-		if err != nil {
-			fmt.Println("Error sending command:", err)
-		}
-
-		response, err := serverReader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("Error reading message:", err)
-			continue
-		}
-		fmt.Print(response)
+	if err := kvClient.RunInteractive(); err != nil {
+		log.Printf("Error during interactive session: %v", err)
 	}
 }
