@@ -2,8 +2,8 @@ package server
 
 import (
 	"bufio"
-	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 
@@ -35,9 +35,10 @@ func handleConnection(conn net.Conn) {
 		message, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
+				log.Println("[INFO] Client disconnected:", getAddress(conn))
 				return
 			}
-			fmt.Println("Error reading from connection:", err)
+			log.Printf("[ERROR] Unable to read from %s: %v\n", getAddress(conn), err)
 			return
 		}
 
@@ -49,7 +50,7 @@ func handleConnection(conn net.Conn) {
 
 		_, err = conn.Write([]byte(response))
 		if err != nil {
-			fmt.Println("Error writing to connection:", err)
+			log.Printf("[ERROR] Error writing to %s: %v\n", getAddress(conn), err)
 			return
 		}
 	}
@@ -57,6 +58,7 @@ func handleConnection(conn net.Conn) {
 
 func processCommand(tokens []string) string {
 	if len(tokens) == 0 {
+		log.Println("[WARN] Received empty command")
 		return InvalidCommand
 	}
 
@@ -64,42 +66,53 @@ func processCommand(tokens []string) string {
 	switch command {
 	case GetCommand:
 		if len(tokens) != 2 {
+			log.Println("[WARN] Invalid GET command format")
 			return InvalidGetCommand
 		}
 		key := tokens[1]
 		value, err := kv.Get(key)
 		if err != nil {
+			log.Printf("[WARN] GET %s -> key not found\n", key)
 			return err.Error()
 		}
+		log.Printf("[INFO] GET %s -> %s\n", key, value)
 		return value
 	case SetCommand:
 		if len(tokens) != 3 {
+			log.Println("[WARN] Invalid SET command format")
 			return InvalidSetCommand
 		}
 		key, value := tokens[1], tokens[2]
 		kv.Set(key, value)
+		log.Printf("[INFO] SET %s %s -> OK\n", key, value)
 		return PutOK
 	default:
+		log.Printf("[WARN] Unknown command: %s\n", command)
 		return UknownCommand
 	}
+}
+
+func getAddress(conn net.Conn) string {
+	return conn.RemoteAddr().String()
 }
 
 func StartServer() {
 	ln, err := net.Listen("tcp", Port)
 	if err != nil {
-		fmt.Println("Failed to start server:", err)
+		log.Fatalf("[FATAL] Failed to start server: %v\n", err)
 		return
 	}
 	defer ln.Close()
-	fmt.Println("Server is listening on port 8080...")
+	log.Println("[INFO] Server is listening on port 8080...")
 
 	// Main loop
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection", err)
+			log.Printf("[ERROR] Error accepting connection: %v\n", err)
 			continue
 		}
+		log.Println("[INFO] Client connected:", getAddress(conn))
 		go handleConnection(conn)
 	}
 }

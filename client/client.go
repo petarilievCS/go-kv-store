@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -53,28 +54,30 @@ func (c *KVClient) SendCommand(command string) (string, error) {
 func (c *KVClient) RunInteractive() error {
 	stdinReader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("kv> ")
+		fmt.Print("kv> ") // keep this for user interaction
 		input, err := stdinReader.ReadString('\n')
 		if err != nil {
-			fmt.Println("Error reading input:", err)
+			log.Printf("[ERROR] Error reading input: %v", err)
 			continue
 		}
 
 		input = strings.TrimSpace(input)
 		if input == ExitCommand || input == QuitCommand {
+			log.Println("[INFO] Client exited interactive session")
 			fmt.Println("Bye 👋")
 			break
 		}
 
 		if input == "" {
-			continue // Don't send empty commands
+			continue
 		}
 
 		response, err := c.SendCommand(input)
 		if err != nil {
-			fmt.Println("Error:", err)
+			log.Printf("[ERROR] Command failed: %v", err)
 			continue
 		}
+
 		fmt.Println(response)
 	}
 	return nil
