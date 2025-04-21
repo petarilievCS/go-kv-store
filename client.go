@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 )
 
 const (
@@ -23,16 +24,21 @@ func main() {
 		return
 	}
 	defer conn.Close()
-	fmt.Println("Connected to server.")
+	fmt.Println("Connected to server")
 
 	serverReader := bufio.NewReader(conn)
 	stdinReader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("Enter command: ")
+		fmt.Print("kv> ")
 		input, err := stdinReader.ReadString('\n')
 		if err != nil {
 			fmt.Println("Error reading input:", err)
 			continue
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "exit" {
+			break
 		}
 
 		_, err = conn.Write([]byte(input))

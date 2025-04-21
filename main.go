@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	InvalidCommandError = "Invalid command."
+	InvalidCommandError = "(invalid command)"
 	GetCommand          = "GET"
 	SetCommand          = "SET"
 	Port                = ":8080"
