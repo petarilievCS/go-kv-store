@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -46,7 +47,10 @@ func (c *KVClient) SendCommand(command string) (string, error) {
 
 	response, err := c.reader.ReadString('\n')
 	if err != nil {
-		return "", fmt.Errorf("error reading response: %v", err)
+		if err == io.EOF {
+			return "", fmt.Errorf("server disconnected")
+		}
+		return "", fmt.Errorf("[ERROR] Reading response: %v", err)
 	}
 	return strings.TrimSpace(response), nil
 }
