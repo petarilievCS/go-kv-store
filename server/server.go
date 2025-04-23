@@ -106,67 +106,85 @@ func processCommand(tokens []string) string {
 		return InvalidCommand
 	}
 
-	command := tokens[0]
-	switch command {
+	switch tokens[0] {
 	case GetCommand:
-		if len(tokens) != 2 {
-			log.Println("[WARN] Invalid GET command format")
-			return InvalidGetCommand
-		}
-		key := tokens[1]
-		value, err := kv.Get(key)
-		if err != nil {
-			log.Printf("[WARN] GET %s -> key not found\n", key)
-			metrics.ErrorCount++
-			return InvalidGetCommand
-		}
-		log.Printf("[INFO] GET %s -> %s\n", key, value)
-		metrics.GetCount++
-		return value
+		return handleGet(tokens)
 	case SetCommand:
-		if len(tokens) != 3 {
-			log.Println("[WARN] Invalid SET command format")
-			metrics.ErrorCount++
-			return InvalidSetCommand
-		}
-		key, value := tokens[1], tokens[2]
-		kv.Set(key, value)
-		log.Printf("[INFO] SET %s %s -> OK\n", key, value)
-		metrics.SetCount++
-		return PutOK
+		return handleSet(tokens)
 	case SetexCommand:
-		if len(tokens) != 4 {
-			log.Println("[WARN] Invalid SETEX command format")
-			metrics.ErrorCount++
-			return InvalidSetExCommand
-		}
-		key, value, ttlStr := tokens[1], tokens[2], tokens[3]
-
-		ttl, err := strconv.Atoi(ttlStr)
-		if err != nil || ttl <= 0 {
-			log.Println("[WARN] TTL in SETEX is not a positive integer")
-			metrics.ErrorCount++
-			return InvalidTTLValue
-		}
-
-		kv.SetEx(key, value, ttl)
-		log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
-		metrics.SetExCount++
-		return PutOK
+		return handleSetEx(tokens)
 	case StatsCommand:
-		if len(tokens) != 1 {
-			log.Println("[WARN] Invalid STATS command format")
-			metrics.ErrorCount++
-			return InvalidStatsCommand
-		}
-		return statsString()
+		return handleStats(tokens)
 	default:
-		log.Printf("[WARN] Unknown command: %s\n", command)
+		log.Printf("[WARN] Unknown command: %s\n", tokens[0])
 		metrics.ErrorCount++
 		return UknownCommand
 	}
 }
 
+// Command handlers
+func handleGet(tokens []string) string {
+	if len(tokens) != 2 {
+		log.Println("[WARN] Invalid GET command format")
+		metrics.ErrorCount++
+		return InvalidGetCommand
+	}
+	key := tokens[1]
+	value, err := kv.Get(key)
+	if err != nil {
+		log.Printf("[WARN] GET %s -> key not found\n", key)
+		metrics.ErrorCount++
+		return InvalidGetCommand
+	}
+	log.Printf("[INFO] GET %s -> %s\n", key, value)
+	metrics.GetCount++
+	return value
+}
+
+func handleSet(tokens []string) string {
+	if len(tokens) != 3 {
+		log.Println("[WARN] Invalid SET command format")
+		metrics.ErrorCount++
+		return InvalidSetCommand
+	}
+	key, value := tokens[1], tokens[2]
+	kv.Set(key, value)
+	log.Printf("[INFO] SET %s %s -> OK\n", key, value)
+	metrics.SetCount++
+	return PutOK
+}
+
+func handleSetEx(tokens []string) string {
+	if len(tokens) != 4 {
+		log.Println("[WARN] Invalid SETEX command format")
+		metrics.ErrorCount++
+		return InvalidSetExCommand
+	}
+	key, value, ttlStr := tokens[1], tokens[2], tokens[3]
+
+	ttl, err := strconv.Atoi(ttlStr)
+	if err != nil || ttl <= 0 {
+		log.Println("[WARN] TTL in SETEX is not a positive integer")
+		metrics.ErrorCount++
+		return InvalidTTLValue
+	}
+
+	kv.SetEx(key, value, ttl)
+	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
+	metrics.SetExCount++
+	return PutOK
+}
+
+func handleStats(tokens []string) string {
+	if len(tokens) != 1 {
+		log.Println("[WARN] Invalid STATS command format")
+		metrics.ErrorCount++
+		return InvalidStatsCommand
+	}
+	return statsString()
+}
+
+// Helper methods\
 func getAddress(conn net.Conn) string {
 	return conn.RemoteAddr().String()
 }
@@ -206,6 +224,7 @@ func statsString() string {
 	)
 }
 
+// Main method
 func StartServer() {
 	ln, err := net.Listen("tcp", Port)
 	if err != nil {
