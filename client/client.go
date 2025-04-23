@@ -45,14 +45,21 @@ func (c *KVClient) SendCommand(command string) (string, error) {
 		return "", fmt.Errorf("error sending command: %v", err)
 	}
 
-	response, err := c.reader.ReadString('\n')
-	if err != nil {
-		if err == io.EOF {
-			return "", fmt.Errorf("server disconnected")
+	var response strings.Builder
+	for {
+		line, err := c.reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				return "", fmt.Errorf("server disconnected")
+			}
+			return "", fmt.Errorf("[ERROR] Reading response: %v", err)
 		}
-		return "", fmt.Errorf("[ERROR] Reading response: %v", err)
+		if strings.TrimSpace(line) == "END" {
+			break
+		}
+		response.WriteString(line)
 	}
-	return strings.TrimSpace(response), nil
+	return strings.TrimSpace(response.String()), nil
 }
 
 func (c *KVClient) RunInteractive() error {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -9,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ const (
 	GetCommand   = "GET"
 	SetCommand   = "SET"
 	SetexCommand = "SETEX"
+	StatsCommand = "STATS"
 	Port         = ":8080"
 	Timeout      = 30
 )
@@ -30,15 +33,27 @@ const (
 	InvalidSetCommand   = "ERROR: Invalid SET command. Format: SET <key> <value>"
 	InvalidSetExCommand = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
 	InvalidGetCommand   = "ERROR: Invalid GET command. Format: GET <key>"
+	InvalidStatsCommand = "ERROR: Invalid STATS command. Format: STATS"
 	UknownCommand       = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
 	InvalidTTLValue     = "ERROR: TTL must be a non-negative integer"
 )
 
+type Metrics struct {
+	mu            sync.RWMutex
+	ActiveClients int
+	SetCount      int
+	GetCount      int
+	SetExCount    int
+	ErrorCount    int
+}
+
 var kv = kvstore.New()
 var connections = make(map[net.Conn]struct{})
+var metrics = Metrics{}
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
+	metrics.ActiveClients++
 
 	conn.SetReadDeadline(time.Now().Add(Timeout * time.Second))
 	conn.SetWriteDeadline(time.Now().Add(Timeout * time.Second))
@@ -72,7 +87,7 @@ func handleConnection(conn net.Conn) {
 		tokens := strings.Split(message, " ")
 
 		response := processCommand(tokens)
-		response += "\n"
+		response += "\nEND\n"
 
 		_, err = conn.Write([]byte(response))
 		conn.SetWriteDeadline(time.Now().Add(Timeout * time.Second))
@@ -87,6 +102,7 @@ func handleConnection(conn net.Conn) {
 func processCommand(tokens []string) string {
 	if len(tokens) == 0 {
 		log.Println("[WARN] Received empty command")
+		metrics.ErrorCount++
 		return InvalidCommand
 	}
 
@@ -101,22 +117,27 @@ func processCommand(tokens []string) string {
 		value, err := kv.Get(key)
 		if err != nil {
 			log.Printf("[WARN] GET %s -> key not found\n", key)
-			return err.Error()
+			metrics.ErrorCount++
+			return InvalidGetCommand
 		}
 		log.Printf("[INFO] GET %s -> %s\n", key, value)
+		metrics.GetCount++
 		return value
 	case SetCommand:
 		if len(tokens) != 3 {
 			log.Println("[WARN] Invalid SET command format")
+			metrics.ErrorCount++
 			return InvalidSetCommand
 		}
 		key, value := tokens[1], tokens[2]
 		kv.Set(key, value)
 		log.Printf("[INFO] SET %s %s -> OK\n", key, value)
+		metrics.SetCount++
 		return PutOK
 	case SetexCommand:
 		if len(tokens) != 4 {
 			log.Println("[WARN] Invalid SETEX command format")
+			metrics.ErrorCount++
 			return InvalidSetExCommand
 		}
 		key, value, ttlStr := tokens[1], tokens[2], tokens[3]
@@ -124,14 +145,24 @@ func processCommand(tokens []string) string {
 		ttl, err := strconv.Atoi(ttlStr)
 		if err != nil || ttl <= 0 {
 			log.Println("[WARN] TTL in SETEX is not a positive integer")
+			metrics.ErrorCount++
 			return InvalidTTLValue
 		}
 
 		kv.SetEx(key, value, ttl)
 		log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
+		metrics.SetExCount++
 		return PutOK
+	case StatsCommand:
+		if len(tokens) != 1 {
+			log.Println("[WARN] Invalid STATS command format")
+			metrics.ErrorCount++
+			return InvalidStatsCommand
+		}
+		return statsString()
 	default:
 		log.Printf("[WARN] Unknown command: %s\n", command)
+		metrics.ErrorCount++
 		return UknownCommand
 	}
 }
@@ -158,6 +189,21 @@ func setupShutdownHook(ln net.Listener) {
 func disconnect(conn net.Conn) {
 	conn.Close()
 	delete(connections, conn)
+	metrics.ActiveClients--
+}
+
+func statsString() string {
+	metrics.mu.RLock()
+	defer metrics.mu.RUnlock()
+
+	return fmt.Sprintf(
+		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nErrors: %d",
+		metrics.ActiveClients,
+		metrics.SetCount,
+		metrics.GetCount,
+		metrics.SetExCount,
+		metrics.ErrorCount,
+	)
 }
 
 func StartServer() {
