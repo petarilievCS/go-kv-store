@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -38,23 +37,13 @@ const (
 	InvalidTTLValue     = "ERROR: TTL must be a non-negative integer"
 )
 
-type Metrics struct {
-	mu            sync.RWMutex
-	ActiveClients int
-	SetCount      int
-	GetCount      int
-	SetExCount    int
-	ErrorCount    int
-}
-
 var kv = kvstore.New()
 var connections = NewConnections()
-
 var metrics = Metrics{}
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
-	metrics.ActiveClients++
+	metrics.IncActiveClients()
 
 	conn.SetReadDeadline(time.Now().Add(Timeout * time.Second))
 	conn.SetWriteDeadline(time.Now().Add(Timeout * time.Second))
@@ -103,7 +92,7 @@ func handleConnection(conn net.Conn) {
 func processCommand(tokens []string) string {
 	if len(tokens) == 0 {
 		log.Println("[WARN] Received empty command")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidCommand
 	}
 
@@ -118,7 +107,7 @@ func processCommand(tokens []string) string {
 		return handleStats(tokens)
 	default:
 		log.Printf("[WARN] Unknown command: %s\n", tokens[0])
-		metrics.ErrorCount++
+		metrics.IncError()
 		return UknownCommand
 	}
 }
@@ -127,38 +116,38 @@ func processCommand(tokens []string) string {
 func handleGet(tokens []string) string {
 	if len(tokens) != 2 {
 		log.Println("[WARN] Invalid GET command format")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidGetCommand
 	}
 	key := tokens[1]
 	value, err := kv.Get(key)
 	if err != nil {
 		log.Printf("[WARN] GET %s -> key not found\n", key)
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidGetCommand
 	}
 	log.Printf("[INFO] GET %s -> %s\n", key, value)
-	metrics.GetCount++
+	metrics.IncGet()
 	return value
 }
 
 func handleSet(tokens []string) string {
 	if len(tokens) != 3 {
 		log.Println("[WARN] Invalid SET command format")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidSetCommand
 	}
 	key, value := tokens[1], tokens[2]
 	kv.Set(key, value)
 	log.Printf("[INFO] SET %s %s -> OK\n", key, value)
-	metrics.SetCount++
+	metrics.IncSet()
 	return PutOK
 }
 
 func handleSetEx(tokens []string) string {
 	if len(tokens) != 4 {
 		log.Println("[WARN] Invalid SETEX command format")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidSetExCommand
 	}
 	key, value, ttlStr := tokens[1], tokens[2], tokens[3]
@@ -166,20 +155,20 @@ func handleSetEx(tokens []string) string {
 	ttl, err := strconv.Atoi(ttlStr)
 	if err != nil || ttl <= 0 {
 		log.Println("[WARN] TTL in SETEX is not a positive integer")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidTTLValue
 	}
 
 	kv.SetEx(key, value, ttl)
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
-	metrics.SetExCount++
+	metrics.IncSetEx()
 	return PutOK
 }
 
 func handleStats(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid STATS command format")
-		metrics.ErrorCount++
+		metrics.IncError()
 		return InvalidStatsCommand
 	}
 	return statsString()
@@ -205,20 +194,19 @@ func setupShutdownHook(ln net.Listener) {
 func disconnect(conn net.Conn) {
 	conn.Close()
 	connections.Remove(conn)
-	metrics.ActiveClients--
+	metrics.DecActiveClients()
 }
 
 func statsString() string {
-	metrics.mu.RLock()
-	defer metrics.mu.RUnlock()
+	snapshot := metrics.Snapshot()
 
 	return fmt.Sprintf(
 		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nErrors: %d",
-		metrics.ActiveClients,
-		metrics.SetCount,
-		metrics.GetCount,
-		metrics.SetExCount,
-		metrics.ErrorCount,
+		snapshot.ActiveClients,
+		snapshot.SetCount,
+		snapshot.GetCount,
+		snapshot.SetExCount,
+		snapshot.ErrorCount,
 	)
 }
 
