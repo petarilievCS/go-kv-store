@@ -48,7 +48,8 @@ type Metrics struct {
 }
 
 var kv = kvstore.New()
-var connections = make(map[net.Conn]struct{})
+var connections = NewConnections()
+
 var metrics = Metrics{}
 
 func handleConnection(conn net.Conn) {
@@ -58,7 +59,7 @@ func handleConnection(conn net.Conn) {
 	conn.SetReadDeadline(time.Now().Add(Timeout * time.Second))
 	conn.SetWriteDeadline(time.Now().Add(Timeout * time.Second))
 
-	connections[conn] = struct{}{}
+	connections.Add(conn)
 	reader := bufio.NewReader(conn)
 
 	for {
@@ -196,17 +197,14 @@ func setupShutdownHook(ln net.Listener) {
 	go func() {
 		<-sigCh
 		log.Println("[INFO] Shutting down server...")
+		connections.CloseAll()
 		ln.Close()
-
-		for conn := range connections {
-			conn.Close()
-		}
 	}()
 }
 
 func disconnect(conn net.Conn) {
 	conn.Close()
-	delete(connections, conn)
+	connections.Remove(conn)
 	metrics.ActiveClients--
 }
 

@@ -28,6 +28,7 @@ func main() {
 			conn, err := net.Dial("tcp", serverAddress)
 			if err != nil {
 				log.Printf("[ERROR] Error connecting to server: %s", err)
+				return
 			}
 			defer conn.Close()
 
@@ -41,11 +42,13 @@ func main() {
 			_, err = conn.Write([]byte(setCommand))
 			if err != nil {
 				log.Printf("[ERROR] Error sending command: %s", err)
+				return
 			}
 
-			response, err := reader.ReadString('\n')
+			response, err := getResponse(reader)
 			if err != nil {
-				log.Printf("[ERROR] Error receiving response: %s", err)
+				log.Printf("[ERROR] Error reading command: %s", err)
+				return
 			}
 
 			response = strings.TrimSpace(response)
@@ -58,11 +61,13 @@ func main() {
 			_, err = conn.Write([]byte(getCommand))
 			if err != nil {
 				log.Printf("[ERROR] Error sending command: %s", err)
+				return
 			}
 
-			response, err = reader.ReadString('\n')
+			response, err = getResponse(reader)
 			if err != nil {
 				log.Printf("[ERROR] Error receiving response: %s", err)
+				return
 			}
 
 			response = strings.TrimSpace(response)
@@ -75,4 +80,19 @@ func main() {
 	wg.Wait()
 
 	log.Printf("[DONE] %d clients finished\n", numClients)
+}
+
+func getResponse(reader *bufio.Reader) (string, error) {
+	var responseBuilder strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(line) == "END" {
+			break
+		}
+		responseBuilder.WriteString(line)
+	}
+	return responseBuilder.String(), nil
 }
