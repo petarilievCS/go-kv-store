@@ -54,6 +54,18 @@ func (s *KVStore) SetEx(key string, value string, ttl int) {
 	s.expirations[key] = time.Now().Add(time.Duration(ttl) * time.Second)
 }
 
+func (s *KVStore) Delete(key string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	_, exists := s.data[key]
+	if !exists {
+		return errors.New(KeyNotFound)
+	}
+	delete(s.data, key)
+	delete(s.expirations, key)
+	return nil
+}
+
 func (s *KVStore) expired(key string) bool {
 	exipration, exists := s.expirations[key]
 	return exists && time.Now().After(exipration)

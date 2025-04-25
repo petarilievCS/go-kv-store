@@ -17,24 +17,26 @@ import (
 )
 
 const (
-	PutOK        = "OK"
-	GetCommand   = "GET"
-	SetCommand   = "SET"
-	SetexCommand = "SETEX"
-	StatsCommand = "STATS"
-	Port         = ":8080"
-	Timeout      = 30
+	OK            = "OK"
+	GetCommand    = "GET"
+	SetCommand    = "SET"
+	SetexCommand  = "SETEX"
+	StatsCommand  = "STATS"
+	DeleteCommand = "DELETE"
+	Port          = ":8080"
+	Timeout       = 30
 )
 
 // Errors
 const (
-	InvalidCommand      = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidSetCommand   = "ERROR: Invalid SET command. Format: SET <key> <value>"
-	InvalidSetExCommand = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
-	InvalidGetCommand   = "ERROR: Invalid GET command. Format: GET <key>"
-	InvalidStatsCommand = "ERROR: Invalid STATS command. Format: STATS"
-	UknownCommand       = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidTTLValue     = "ERROR: TTL must be a non-negative integer"
+	InvalidCommand       = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
+	InvalidSetCommand    = "ERROR: Invalid SET command. Format: SET <key> <value>"
+	InvalidSetExCommand  = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
+	InvalidGetCommand    = "ERROR: Invalid GET command. Format: GET <key>"
+	InvalidStatsCommand  = "ERROR: Invalid STATS command. Format: STATS"
+	InvalidDeleteCommand = "ERROR: Invalid DELETE command. Format: DELETE <key>"
+	UknownCommand        = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
+	InvalidTTLValue      = "ERROR: TTL must be a non-negative integer"
 )
 
 var kv = kvstore.New()
@@ -105,6 +107,8 @@ func processCommand(tokens []string) string {
 		return handleSetEx(tokens)
 	case StatsCommand:
 		return handleStats(tokens)
+	case DeleteCommand:
+		return handleDelete(tokens)
 	default:
 		log.Printf("[WARN] Unknown command: %s\n", tokens[0])
 		metrics.IncError()
@@ -124,7 +128,7 @@ func handleGet(tokens []string) string {
 	if err != nil {
 		log.Printf("[WARN] GET %s -> key not found\n", key)
 		metrics.IncError()
-		return InvalidGetCommand
+		return kvstore.KeyNotFound
 	}
 	log.Printf("[INFO] GET %s -> %s\n", key, value)
 	metrics.IncGet()
@@ -141,7 +145,7 @@ func handleSet(tokens []string) string {
 	kv.Set(key, value)
 	log.Printf("[INFO] SET %s %s -> OK\n", key, value)
 	metrics.IncSet()
-	return PutOK
+	return OK
 }
 
 func handleSetEx(tokens []string) string {
@@ -162,7 +166,7 @@ func handleSetEx(tokens []string) string {
 	kv.SetEx(key, value, ttl)
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
 	metrics.IncSetEx()
-	return PutOK
+	return OK
 }
 
 func handleStats(tokens []string) string {
@@ -172,6 +176,23 @@ func handleStats(tokens []string) string {
 		return InvalidStatsCommand
 	}
 	return statsString()
+}
+
+func handleDelete(tokens []string) string {
+	if len(tokens) != 2 {
+		log.Println("[WARN] Invalid DELETE command format")
+		metrics.IncError()
+		return InvalidDeleteCommand
+	}
+	key := tokens[1]
+	err := kv.Delete(key)
+	if err != nil {
+		log.Printf("[WARN] GET %s -> key not found\n", key)
+		metrics.IncError()
+		return kvstore.KeyNotFound
+	}
+	log.Printf("[INFO] DELETE %s -> OK", tokens[1])
+	return OK
 }
 
 // Helper methods\

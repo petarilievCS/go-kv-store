@@ -10,6 +10,7 @@ type Metrics struct {
 	SetCount      int
 	GetCount      int
 	SetExCount    int
+	DeleteCount   int
 	ErrorCount    int
 }
 
@@ -40,6 +41,12 @@ func (m *Metrics) IncGet() {
 func (m *Metrics) IncSetEx() {
 	m.mu.Lock()
 	m.SetExCount++
+	m.mu.Unlock()
+}
+
+func (m *Metrics) IncDelete() {
+	m.mu.Lock()
+	m.DeleteCount++
 	m.mu.Unlock()
 }
 
