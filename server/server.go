@@ -23,6 +23,7 @@ const (
 	SetexCommand  = "SETEX"
 	StatsCommand  = "STATS"
 	DeleteCommand = "DELETE"
+	KeysCommand   = "KEYS"
 	Port          = ":8080"
 	Timeout       = 30
 )
@@ -36,6 +37,7 @@ const (
 	InvalidStatsCommand  = "ERROR: Invalid STATS command. Format: STATS"
 	InvalidDeleteCommand = "ERROR: Invalid DELETE command. Format: DELETE <key>"
 	UknownCommand        = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
+	InvalidKeysCommand   = "ERROR: Invalid KEYS command. Format: KEYS"
 	InvalidTTLValue      = "ERROR: TTL must be a non-negative integer"
 )
 
@@ -109,6 +111,8 @@ func processCommand(tokens []string) string {
 		return handleStats(tokens)
 	case DeleteCommand:
 		return handleDelete(tokens)
+	case KeysCommand:
+		return handleKeys(tokens)
 	default:
 		log.Printf("[WARN] Unknown command: %s\n", tokens[0])
 		metrics.IncError()
@@ -191,8 +195,26 @@ func handleDelete(tokens []string) string {
 		metrics.IncError()
 		return kvstore.KeyNotFound
 	}
+	metrics.IncDelete()
 	log.Printf("[INFO] DELETE %s -> OK", tokens[1])
 	return OK
+}
+
+func handleKeys(tokens []string) string {
+	if len(tokens) != 1 {
+		log.Println("[WARN] Invalid KEYS command format")
+		metrics.IncError()
+		return InvalidKeysCommand
+	}
+
+	keys := kv.Keys()
+	metrics.IncKeys()
+	log.Printf("[INFO] KEYS -> %v\n", keys)
+
+	if len(keys) == 0 {
+		return "EMPTY"
+	}
+	return strings.Join(keys, "\n")
 }
 
 // Helper methods\
@@ -222,11 +244,13 @@ func statsString() string {
 	snapshot := metrics.Snapshot()
 
 	return fmt.Sprintf(
-		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nErrors: %d",
+		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nKEYS: %d\nErrors: %d",
 		snapshot.ActiveClients,
 		snapshot.SetCount,
 		snapshot.GetCount,
 		snapshot.SetExCount,
+		snapshot.DeleteCount,
+		snapshot.KeysCount,
 		snapshot.ErrorCount,
 	)
 }

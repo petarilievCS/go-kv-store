@@ -34,14 +34,18 @@ func (s *KVStore) Set(key, value string) {
 
 func (s *KVStore) Get(key string) (string, error) {
 	s.mutex.RLock()
-	defer s.mutex.RUnlock()
 	value, exists := s.data[key]
+	s.mutex.RUnlock()
+
 	if !exists {
 		return "", errors.New(KeyNotFound)
 	}
+
 	if s.expired(key) {
+		s.mutex.Lock()
 		delete(s.data, key)
 		delete(s.expirations, key)
+		s.mutex.Unlock()
 		return "", errors.New(KeyNotFound)
 	}
 	return value, nil
@@ -66,7 +70,33 @@ func (s *KVStore) Delete(key string) error {
 	return nil
 }
 
+func (s *KVStore) Keys() []string {
+	s.cleanUp()
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	keys := make([]string, 0, len(s.data))
+	for key := range s.data {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// Helpers
 func (s *KVStore) expired(key string) bool {
 	exipration, exists := s.expirations[key]
 	return exists && time.Now().After(exipration)
+}
+
+func (s *KVStore) cleanUp() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Remove expired keys
+	for key, _ := range s.data {
+		if s.expired(key) {
+			s.Delete(key)
+		}
+	}
 }
