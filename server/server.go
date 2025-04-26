@@ -26,6 +26,7 @@ const (
 	KeysCommand   = "KEYS"
 	Port          = ":8080"
 	Timeout       = 30
+	FileName      = "data.txt"
 )
 
 // Errors
@@ -230,6 +231,13 @@ func setupShutdownHook(ln net.Listener) {
 		<-sigCh
 		log.Println("[INFO] Shutting down server...")
 		connections.CloseAll()
+
+		log.Println("[INFO] Saving data to disk...")
+		err := kv.SaveToDisk(FileName)
+		if err != nil {
+			log.Printf("[ERROR] Error while saving data to disk: %s\n", err)
+		}
+
 		ln.Close()
 	}()
 }
@@ -257,6 +265,20 @@ func statsString() string {
 
 // Main method
 func StartServer() {
+	log.Println("[INFO] Starting server...")
+	log.Println("[INFO] Loading data from disk...")
+
+	err := kv.LoadFromDisk(FileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("[INFO] File %s does not exist, likely first startup\n", FileName)
+		} else {
+			log.Printf("[ERROR] Error loading data from disk: %s\n", err)
+		}
+	} else {
+		log.Println("[INFO] Loaded data from disk")
+	}
+
 	ln, err := net.Listen("tcp", Port)
 	if err != nil {
 		log.Fatalf("[FATAL] Failed to start server: %v\n", err)
