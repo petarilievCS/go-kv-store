@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -90,76 +89,52 @@ func (s *KVStore) Keys() []string {
 
 // Persistence Methods
 
-func (s *KVStore) SaveToDisk(directory string) error {
+func (s *KVStore) SaveToDisk(fileName string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Check if directory exists
-	_, err := os.Stat(directory)
-	if os.IsNotExist(err) {
-		err := os.Mkdir(directory, 0755)
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	// Create files
-	dataFile, err := createFile(directory, DataFile)
+	// Create file
+	file, err := os.Create(fileName)
 	if err != nil {
 		return err
 	}
-	defer dataFile.Close()
-	expirationsFile, err := createFile(directory, ExpirationsFile)
-	if err != nil {
-		return err
-	}
-	defer expirationsFile.Close()
+	defer file.Close()
 
 	// Encode data
-	err = json.NewEncoder(dataFile).Encode(s.data)
-	if err != nil {
-		return err
-	}
-	err = json.NewEncoder(expirationsFile).Encode(s.expirations)
-	if err != nil {
-		return err
-	}
-	return nil
+	encoder := json.NewEncoder(file)
+	return encoder.Encode(struct {
+		Data        map[string]string
+		Expirations map[string]time.Time
+	}{
+		Data:        s.data,
+		Expirations: s.expirations,
+	})
 }
 
-func (s *KVStore) LoadFromDisk(directory string) error {
+func (s *KVStore) LoadFromDisk(fileName string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Check if directory exists
-	_, err := os.Stat(directory)
+	// Open file
+	file, err := os.Open(fileName)
 	if err != nil {
 		return err
 	}
-
-	// Open files
-	dataFile, err := openFile(directory, DataFile)
-	if err != nil {
-		return err
-	}
-	defer dataFile.Close()
-	expirationsFile, err := openFile(directory, ExpirationsFile)
-	if err != nil {
-		return err
-	}
-	defer expirationsFile.Close()
+	defer file.Close()
 
 	// Decode data
-	err = json.NewDecoder(dataFile).Decode(&s.data)
+	var stored struct {
+		Data        map[string]string
+		Expirations map[string]time.Time
+	}
+	err = json.NewDecoder(file).Decode(&stored)
 	if err != nil {
 		return err
 	}
-	err = json.NewDecoder(expirationsFile).Decode(&s.expirations)
-	if err != nil {
-		return err
-	}
+
+	// Update in-memory storage
+	s.data = stored.Data
+	s.expirations = stored.Expirations
 	return nil
 }
 
@@ -179,24 +154,4 @@ func (s *KVStore) cleanUp() {
 			s.Delete(key)
 		}
 	}
-}
-
-func createFile(directory string, fileName string) (*os.File, error) {
-	path := filepath.Join(directory, fileName)
-	file, err := os.Create(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return file, nil
-}
-
-func openFile(directory string, fileName string) (*os.File, error) {
-	path := filepath.Join(directory, fileName)
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return file, nil
 }
