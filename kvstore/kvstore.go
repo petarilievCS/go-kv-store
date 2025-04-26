@@ -1,12 +1,17 @@
 package kvstore
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 const KeyNotFound = "ERROR: Key not found"
+const DataFile = "data.txt"
+const ExpirationsFile = "expirations.txt"
 
 type KVStore struct {
 	mutex       sync.RWMutex
@@ -83,6 +88,81 @@ func (s *KVStore) Keys() []string {
 	return keys
 }
 
+// Persistence Methods
+
+func (s *KVStore) SaveToDisk(directory string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Check if directory exists
+	_, err := os.Stat(directory)
+	if os.IsNotExist(err) {
+		err := os.Mkdir(directory, 0755)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	// Create files
+	dataFile, err := createFile(directory, DataFile)
+	if err != nil {
+		return err
+	}
+	defer dataFile.Close()
+	expirationsFile, err := createFile(directory, ExpirationsFile)
+	if err != nil {
+		return err
+	}
+	defer expirationsFile.Close()
+
+	// Encode data
+	err = json.NewEncoder(dataFile).Encode(s.data)
+	if err != nil {
+		return err
+	}
+	err = json.NewEncoder(expirationsFile).Encode(s.expirations)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *KVStore) LoadFromDisk(directory string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Check if directory exists
+	_, err := os.Stat(directory)
+	if err != nil {
+		return err
+	}
+
+	// Open files
+	dataFile, err := openFile(directory, DataFile)
+	if err != nil {
+		return err
+	}
+	defer dataFile.Close()
+	expirationsFile, err := openFile(directory, ExpirationsFile)
+	if err != nil {
+		return err
+	}
+	defer expirationsFile.Close()
+
+	// Decode data
+	err = json.NewDecoder(dataFile).Decode(&s.data)
+	if err != nil {
+		return err
+	}
+	err = json.NewDecoder(expirationsFile).Decode(&s.expirations)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Helpers
 func (s *KVStore) expired(key string) bool {
 	exipration, exists := s.expirations[key]
@@ -99,4 +179,24 @@ func (s *KVStore) cleanUp() {
 			s.Delete(key)
 		}
 	}
+}
+
+func createFile(directory string, fileName string) (*os.File, error) {
+	path := filepath.Join(directory, fileName)
+	file, err := os.Create(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file, nil
+}
+
+func openFile(directory string, fileName string) (*os.File, error) {
+	path := filepath.Join(directory, fileName)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file, nil
 }
