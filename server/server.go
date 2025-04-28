@@ -17,29 +17,31 @@ import (
 )
 
 const (
-	OK            = "OK"
-	GetCommand    = "GET"
-	SetCommand    = "SET"
-	SetexCommand  = "SETEX"
-	StatsCommand  = "STATS"
-	DeleteCommand = "DELETE"
-	KeysCommand   = "KEYS"
-	Port          = ":8080"
-	Timeout       = 30
-	FileName      = "data.txt"
+	OK              = "OK"
+	GetCommand      = "GET"
+	SetCommand      = "SET"
+	SetexCommand    = "SETEX"
+	StatsCommand    = "STATS"
+	DeleteCommand   = "DELETE"
+	DeleteexCommand = "DELETEEX"
+	KeysCommand     = "KEYS"
+	Port            = ":8080"
+	Timeout         = 30
+	FileName        = "data.txt"
 )
 
 // Errors
 const (
-	InvalidCommand       = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidSetCommand    = "ERROR: Invalid SET command. Format: SET <key> <value>"
-	InvalidSetExCommand  = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
-	InvalidGetCommand    = "ERROR: Invalid GET command. Format: GET <key>"
-	InvalidStatsCommand  = "ERROR: Invalid STATS command. Format: STATS"
-	InvalidDeleteCommand = "ERROR: Invalid DELETE command. Format: DELETE <key>"
-	UknownCommand        = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidKeysCommand   = "ERROR: Invalid KEYS command. Format: KEYS"
-	InvalidTTLValue      = "ERROR: TTL must be a non-negative integer"
+	InvalidCommand        = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
+	InvalidSetCommand     = "ERROR: Invalid SET command. Format: SET <key> <value>"
+	InvalidSetExCommand   = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
+	InvalidGetCommand     = "ERROR: Invalid GET command. Format: GET <key>"
+	InvalidStatsCommand   = "ERROR: Invalid STATS command. Format: STATS"
+	InvalidDeleteCommand  = "ERROR: Invalid DELETE command. Format: DELETE <key>"
+	InvalidDeletexCommand = "ERROR: Invalid DELETEX command. Format: DELETEX <key> <seconds>"
+	UknownCommand         = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
+	InvalidKeysCommand    = "ERROR: Invalid KEYS command. Format: KEYS"
+	InvalidTTLValue       = "ERROR: Time must be a non-negative integer"
 )
 
 var kv = kvstore.New()
@@ -113,6 +115,8 @@ func processCommand(tokens []string) string {
 		return handleStats(tokens)
 	case DeleteCommand:
 		return handleDelete(tokens)
+	case DeleteexCommand:
+		return handleDeleteEx(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
 	default:
@@ -198,7 +202,41 @@ func handleDelete(tokens []string) string {
 		return kvstore.KeyNotFound
 	}
 	metrics.IncDelete()
-	log.Printf("[INFO] DELETE %s -> OK", tokens[1])
+	log.Printf("[INFO] DELETE %s -> OK\n", tokens[1])
+	return OK
+}
+
+func handleDeleteEx(tokens []string) string {
+	if len(tokens) != 3 {
+		log.Println("[WARN] Invalid DELETEX command format")
+		metrics.IncError()
+		return InvalidDeletexCommand
+	}
+
+	key, delayStr := tokens[1], tokens[2]
+
+	// Validate key
+	_, err := kv.Get(key)
+	if err != nil {
+		log.Printf("[WARN] DELETEX %s %s -> key not found\n", key, delayStr)
+		metrics.IncError()
+		return kvstore.KeyNotFound
+	}
+
+	// Validate time
+	delay, err := strconv.Atoi(delayStr)
+	if err != nil || delay <= 0 {
+		log.Printf("[WARN] Time in DELETEX is not a positive integer: %s\n", delayStr)
+		metrics.IncError()
+		return InvalidTTLValue
+	}
+
+	// Schedule deletion
+	metrics.IncDeleteEx()
+	time.AfterFunc(time.Duration(delay)*time.Second, func() {
+		log.Printf("[INFO] DELETEEX %s %s -> OK\n", key, delayStr)
+		kv.Delete(key)
+	})
 	return OK
 }
 
