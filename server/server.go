@@ -45,6 +45,7 @@ const (
 var kv = kvstore.New()
 var connections = NewConnections()
 var metrics = Metrics{}
+var done = make(chan struct{})
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
@@ -218,7 +219,7 @@ func handleKeys(tokens []string) string {
 	return strings.Join(keys, "\n")
 }
 
-// Helper methods\
+// Helper methods
 func getAddress(conn net.Conn) string {
 	return conn.RemoteAddr().String()
 }
@@ -238,6 +239,7 @@ func setupShutdownHook(ln net.Listener) {
 			log.Printf("[ERROR] Error while saving data to disk: %s\n", err)
 		}
 
+		close(done)
 		ln.Close()
 	}()
 }
@@ -278,6 +280,8 @@ func StartServer() {
 	} else {
 		log.Println("[INFO] Loaded data from disk")
 	}
+
+	kv.ScheduleCleanup(10*time.Second, done)
 
 	ln, err := net.Listen("tcp", Port)
 	if err != nil {

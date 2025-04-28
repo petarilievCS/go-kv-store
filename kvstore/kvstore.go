@@ -3,6 +3,7 @@ package kvstore
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -154,4 +155,23 @@ func (s *KVStore) cleanUp() {
 			s.Delete(key)
 		}
 	}
+}
+
+func (s *KVStore) ScheduleCleanup(interval time.Duration, done <-chan struct{}) {
+	log.Printf("[INFO] Scheduled cleanup every %v seconds\n", interval)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				log.Println("[INFO] Running scheduled cleanup...")
+				s.cleanUp()
+			case <-done:
+				log.Println("[INFO] Stopping scheduled cleanup...")
+				return
+			}
+		}
+	}()
 }
