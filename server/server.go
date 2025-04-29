@@ -24,6 +24,7 @@ const (
 	StatsCommand    = "STATS"
 	DeleteCommand   = "DELETE"
 	DeleteexCommand = "DELETEEX"
+	FlushCommand    = "FLUSH"
 	KeysCommand     = "KEYS"
 	PingCommand     = "PING"
 	Port            = ":8080"
@@ -106,6 +107,8 @@ func processCommand(tokens []string) string {
 		return handleDelete(tokens)
 	case DeleteexCommand:
 		return handleDeleteEx(tokens)
+	case FlushCommand:
+		return handleFlush(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
 	case PingCommand:
@@ -231,6 +234,19 @@ func handleDeleteEx(tokens []string) string {
 	return OK
 }
 
+func handleFlush(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.IncError()
+		return formatInvalidCommand("FLUSH", "FLUSH")
+	}
+
+	kv.Flush()
+	log.Println("[INFO] FLUSH: store cleared")
+	metrics.IncFlush()
+
+	return OK
+}
+
 func handleKeys(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid KEYS command format")
@@ -292,13 +308,14 @@ func statsString() string {
 	snapshot := metrics.Snapshot()
 
 	return fmt.Sprintf(
-		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nKEYS: %d\n PING: %d\nErrors: %d",
+		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nFLUSH: %d\nKEYS: %d\n PING: %d\nErrors: %d",
 		snapshot.ActiveClients,
 		snapshot.SetCount,
 		snapshot.GetCount,
 		snapshot.SetExCount,
 		snapshot.DeleteCount,
 		snapshot.DeleteExCount,
+		snapshot.FlushCount,
 		snapshot.KeysCount,
 		snapshot.PingCount,
 		snapshot.ErrorCount,

@@ -75,6 +75,13 @@ func (s *KVStore) Delete(key string) error {
 	return nil
 }
 
+func (s *KVStore) Flush() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.data = make(map[string]string)
+	s.expirations = make(map[string]time.Time)
+}
+
 func (s *KVStore) Keys() []string {
 	s.cleanUp()
 

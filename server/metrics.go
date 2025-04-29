@@ -12,6 +12,7 @@ type Metrics struct {
 	SetExCount    int
 	DeleteCount   int
 	DeleteExCount int
+	FlushCount    int
 	KeysCount     int
 	PingCount     int
 	ErrorCount    int
@@ -59,6 +60,12 @@ func (m *Metrics) IncDeleteEx() {
 	m.mu.Unlock()
 }
 
+func (m *Metrics) IncFlush() {
+	m.mu.Lock()
+	m.FlushCount++
+	m.mu.Unlock()
+}
+
 func (m *Metrics) IncKeys() {
 	m.mu.Lock()
 	m.KeysCount++
@@ -87,6 +94,7 @@ func (m *Metrics) Snapshot() Metrics {
 		SetExCount:    m.SetExCount,
 		DeleteCount:   m.DeleteCount,
 		DeleteExCount: m.DeleteExCount,
+		FlushCount:    m.FlushCount,
 		KeysCount:     m.KeysCount,
 		PingCount:     m.PingCount,
 		ErrorCount:    m.ErrorCount,
