@@ -27,6 +27,7 @@ const (
 	FlushCommand    = "FLUSH"
 	KeysCommand     = "KEYS"
 	PingCommand     = "PING"
+	ShutDownCommand = "SHUTDOWN"
 	Port            = ":8080"
 	Timeout         = 30
 	FileName        = "data.txt"
@@ -113,6 +114,8 @@ func processCommand(tokens []string) string {
 		return handleKeys(tokens)
 	case PingCommand:
 		return handlePing(tokens)
+	case ShutDownCommand:
+		return handleShutDown(tokens)
 	default:
 		log.Printf("[WARN] Invalid command: %s\n", cmd)
 		metrics.IncError()
@@ -273,6 +276,15 @@ func handlePing(tokens []string) string {
 	return "PONG"
 }
 
+func handleShutDown(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.IncError()
+		return formatInvalidCommand("SHUTDOWN", "SHUTDOWN")
+	}
+	go triggerSIGINT()
+	return "Server shutting down..."
+}
+
 // Helper methods
 func getAddress(conn net.Conn) string {
 	return conn.RemoteAddr().String()
@@ -328,6 +340,11 @@ func formatInvalidCommand(cmd, expected string) string {
 
 func formatInvalidTTL(ttlStr string) string {
 	return fmt.Sprintf("ERROR: Invalid TTL value '%s'. TTL must be a positive integer.", ttlStr)
+}
+
+func triggerSIGINT() {
+	p, _ := os.FindProcess(os.Getpid())
+	p.Signal(syscall.SIGINT)
 }
 
 // Main method
