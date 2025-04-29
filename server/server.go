@@ -92,7 +92,8 @@ func processCommand(tokens []string) string {
 		return InvalidCommand
 	}
 
-	switch tokens[0] {
+	cmd := strings.ToUpper(tokens[0])
+	switch cmd {
 	case GetCommand:
 		return handleGet(tokens)
 	case SetCommand:
@@ -110,7 +111,7 @@ func processCommand(tokens []string) string {
 	case PingCommand:
 		return handlePing(tokens)
 	default:
-		log.Printf("[WARN] Invalid command: %s\n", tokens[0])
+		log.Printf("[WARN] Invalid command: %s\n", cmd)
 		metrics.IncError()
 		return InvalidCommand
 	}

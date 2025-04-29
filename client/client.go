@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -79,7 +80,8 @@ func (c *KVClient) RunInteractive() error {
 			break
 		}
 
-		if input == "" {
+		if err := validateInput(input); err != nil {
+			fmt.Println(err)
 			continue
 		}
 
@@ -90,6 +92,40 @@ func (c *KVClient) RunInteractive() error {
 		}
 
 		fmt.Println(response)
+	}
+	return nil
+}
+
+// Helpers
+
+func validateInput(input string) error {
+	tokens := strings.Fields(input)
+	if len(tokens) == 0 {
+		return errors.New("[ERROR]: Empty input")
+	}
+	cmd := strings.ToUpper(tokens[0])
+
+	switch cmd {
+	case "SET":
+		if len(tokens) != 3 {
+			return errors.New("[ERROR] Invalid SET command. Format: SET <key> <value>")
+		}
+	case "GET", "DELETE":
+		if len(tokens) != 2 {
+			return fmt.Errorf("[ERROR] Invalid %s command. Format: %s <key>", cmd, cmd)
+		}
+	case "SETEX":
+		if len(tokens) != 4 {
+			return errors.New("[ERROR] Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>")
+		}
+	case "DELETEEX":
+		if len(tokens) != 3 {
+			return errors.New("[ERROR] Invalid DELETEEX command. Format: DELETEEX <key> <seconds>")
+		}
+	case "PING", "STATS", "KEYS":
+		if len(tokens) != 1 {
+			return fmt.Errorf("[ERROR] Invalid %s command. Format: %s", cmd, cmd)
+		}
 	}
 	return nil
 }
