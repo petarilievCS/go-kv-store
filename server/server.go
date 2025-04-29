@@ -25,14 +25,11 @@ const (
 	DeleteCommand   = "DELETE"
 	DeleteexCommand = "DELETEEX"
 	KeysCommand     = "KEYS"
+	PingCommand     = "PING"
 	Port            = ":8080"
 	Timeout         = 30
 	FileName        = "data.txt"
-)
-
-// Errors
-const (
-	InvalidCommand = "ERROR: Invalid command."
+	InvalidCommand  = "ERROR: Invalid command."
 )
 
 var kv = kvstore.New()
@@ -110,6 +107,8 @@ func processCommand(tokens []string) string {
 		return handleDeleteEx(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
+	case PingCommand:
+		return handlePing(tokens)
 	default:
 		log.Printf("[WARN] Invalid command: %s\n", tokens[0])
 		metrics.IncError()
@@ -248,6 +247,15 @@ func handleKeys(tokens []string) string {
 	return strings.Join(keys, "\n")
 }
 
+func handlePing(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.IncError()
+		return formatInvalidCommand("PING", "PING")
+	}
+	metrics.IncPing()
+	return "PONG"
+}
+
 // Helper methods
 func getAddress(conn net.Conn) string {
 	return conn.RemoteAddr().String()
@@ -283,7 +291,7 @@ func statsString() string {
 	snapshot := metrics.Snapshot()
 
 	return fmt.Sprintf(
-		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nKEYS: %d\nErrors: %d",
+		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nKEYS: %d\n PING: %d\nErrors: %d",
 		snapshot.ActiveClients,
 		snapshot.SetCount,
 		snapshot.GetCount,
@@ -291,6 +299,7 @@ func statsString() string {
 		snapshot.DeleteCount,
 		snapshot.DeleteExCount,
 		snapshot.KeysCount,
+		snapshot.PingCount,
 		snapshot.ErrorCount,
 	)
 }
