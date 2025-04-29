@@ -18,6 +18,19 @@ type Metrics struct {
 	ErrorCount    int
 }
 
+func (m *Metrics) TotalCommands() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.SetCount +
+		m.GetCount +
+		m.SetExCount +
+		m.DeleteCount +
+		m.DeleteExCount +
+		m.FlushCount +
+		m.PingCount
+}
+
 func (m *Metrics) IncActiveClients() {
 	m.mu.Lock()
 	m.ActiveClients++

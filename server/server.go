@@ -26,18 +26,21 @@ const (
 	DeleteexCommand = "DELETEEX"
 	FlushCommand    = "FLUSH"
 	KeysCommand     = "KEYS"
+	InfoCommand     = "INFO"
 	PingCommand     = "PING"
 	ShutDownCommand = "SHUTDOWN"
 	Port            = ":8080"
 	Timeout         = 30
 	FileName        = "data.txt"
 	InvalidCommand  = "ERROR: Invalid command."
+	ServerVersion   = "1.0.0"
 )
 
 var kv = kvstore.New()
 var connections = NewConnections()
 var metrics = Metrics{}
 var done = make(chan struct{})
+var startTime = time.Now()
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
@@ -112,6 +115,8 @@ func processCommand(tokens []string) string {
 		return handleFlush(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
+	case InfoCommand:
+		return handleInfo(tokens)
 	case PingCommand:
 		return handlePing(tokens)
 	case ShutDownCommand:
@@ -265,6 +270,35 @@ func handleKeys(tokens []string) string {
 		return "EMPTY"
 	}
 	return strings.Join(keys, "\n")
+}
+
+func handleInfo(tokens []string) string {
+	if len(tokens) != 1 {
+		return formatInvalidCommand("INFO", "INFO")
+	}
+	uptime := time.Since(startTime)
+
+	metrics.mu.RLock()
+	activeClients := metrics.ActiveClients
+	metrics.mu.RUnlock()
+
+	commandsProcessed := metrics.TotalCommands()
+	keysInStore := len(kv.Keys())
+
+	info := fmt.Sprintf(
+		"Server Version: %s\n"+
+			"Uptime: %s\n"+
+			"Active Clients: %d\n"+
+			"Total Commands Processed: %d\n"+
+			"Keys in Store: %d\n",
+		ServerVersion,
+		uptime.Truncate(time.Second),
+		activeClients,
+		commandsProcessed,
+		keysInStore,
+	)
+	log.Println("[INFO] INFO command requested")
+	return info
 }
 
 func handlePing(tokens []string) string {
