@@ -32,16 +32,7 @@ const (
 
 // Errors
 const (
-	InvalidCommand        = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidSetCommand     = "ERROR: Invalid SET command. Format: SET <key> <value>"
-	InvalidSetExCommand   = "ERROR: Invalid SETEX command. Format: SETEX <key> <value> <ttl_seconds>"
-	InvalidGetCommand     = "ERROR: Invalid GET command. Format: GET <key>"
-	InvalidStatsCommand   = "ERROR: Invalid STATS command. Format: STATS"
-	InvalidDeleteCommand  = "ERROR: Invalid DELETE command. Format: DELETE <key>"
-	InvalidDeletexCommand = "ERROR: Invalid DELETEX command. Format: DELETEX <key> <seconds>"
-	UknownCommand         = "ERROR: Invalid command. Known commands: SET, GET, SETEX"
-	InvalidKeysCommand    = "ERROR: Invalid KEYS command. Format: KEYS"
-	InvalidTTLValue       = "ERROR: Time must be a non-negative integer"
+	InvalidCommand = "ERROR: Invalid command."
 )
 
 var kv = kvstore.New()
@@ -120,9 +111,9 @@ func processCommand(tokens []string) string {
 	case KeysCommand:
 		return handleKeys(tokens)
 	default:
-		log.Printf("[WARN] Unknown command: %s\n", tokens[0])
+		log.Printf("[WARN] Invalid command: %s\n", tokens[0])
 		metrics.IncError()
-		return UknownCommand
+		return InvalidCommand
 	}
 }
 
@@ -131,7 +122,7 @@ func handleGet(tokens []string) string {
 	if len(tokens) != 2 {
 		log.Println("[WARN] Invalid GET command format")
 		metrics.IncError()
-		return InvalidGetCommand
+		return formatInvalidCommand("GET", "GET <key>")
 	}
 	key := tokens[1]
 	value, err := kv.Get(key)
@@ -149,7 +140,7 @@ func handleSet(tokens []string) string {
 	if len(tokens) != 3 {
 		log.Println("[WARN] Invalid SET command format")
 		metrics.IncError()
-		return InvalidSetCommand
+		return formatInvalidCommand("SET", "SET <key> <value>")
 	}
 	key, value := tokens[1], tokens[2]
 	kv.Set(key, value)
@@ -162,7 +153,7 @@ func handleSetEx(tokens []string) string {
 	if len(tokens) != 4 {
 		log.Println("[WARN] Invalid SETEX command format")
 		metrics.IncError()
-		return InvalidSetExCommand
+		return formatInvalidCommand("SETEX", "SETEX <key> <value> <ttl_seconds>")
 	}
 	key, value, ttlStr := tokens[1], tokens[2], tokens[3]
 
@@ -170,7 +161,7 @@ func handleSetEx(tokens []string) string {
 	if err != nil || ttl <= 0 {
 		log.Println("[WARN] TTL in SETEX is not a positive integer")
 		metrics.IncError()
-		return InvalidTTLValue
+		return formatInvalidTTL(ttlStr)
 	}
 
 	kv.SetEx(key, value, ttl)
@@ -183,7 +174,7 @@ func handleStats(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid STATS command format")
 		metrics.IncError()
-		return InvalidStatsCommand
+		return formatInvalidCommand("STATS", "STATS")
 	}
 	return statsString()
 }
@@ -192,7 +183,7 @@ func handleDelete(tokens []string) string {
 	if len(tokens) != 2 {
 		log.Println("[WARN] Invalid DELETE command format")
 		metrics.IncError()
-		return InvalidDeleteCommand
+		return formatInvalidCommand("DELETE", "DELETE <key>")
 	}
 	key := tokens[1]
 	err := kv.Delete(key)
@@ -210,7 +201,7 @@ func handleDeleteEx(tokens []string) string {
 	if len(tokens) != 3 {
 		log.Println("[WARN] Invalid DELETEX command format")
 		metrics.IncError()
-		return InvalidDeletexCommand
+		return formatInvalidCommand("DELETEEX", "DELETEEX <key> <ttl_seconds>")
 	}
 
 	key, delayStr := tokens[1], tokens[2]
@@ -228,7 +219,7 @@ func handleDeleteEx(tokens []string) string {
 	if err != nil || delay <= 0 {
 		log.Printf("[WARN] Time in DELETEX is not a positive integer: %s\n", delayStr)
 		metrics.IncError()
-		return InvalidTTLValue
+		return formatInvalidTTL(delayStr)
 	}
 
 	// Schedule deletion
@@ -244,7 +235,7 @@ func handleKeys(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid KEYS command format")
 		metrics.IncError()
-		return InvalidKeysCommand
+		return formatInvalidCommand("KEYS", "KEYS")
 	}
 
 	keys := kv.Keys()
@@ -292,15 +283,24 @@ func statsString() string {
 	snapshot := metrics.Snapshot()
 
 	return fmt.Sprintf(
-		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nKEYS: %d\nErrors: %d",
+		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nKEYS: %d\nErrors: %d",
 		snapshot.ActiveClients,
 		snapshot.SetCount,
 		snapshot.GetCount,
 		snapshot.SetExCount,
 		snapshot.DeleteCount,
+		snapshot.DeleteExCount,
 		snapshot.KeysCount,
 		snapshot.ErrorCount,
 	)
+}
+
+func formatInvalidCommand(cmd, expected string) string {
+	return fmt.Sprintf("ERROR: Invalid %s command. Expected format: %s", cmd, expected)
+}
+
+func formatInvalidTTL(ttlStr string) string {
+	return fmt.Sprintf("ERROR: Invalid TTL value '%s'. TTL must be a positive integer.", ttlStr)
 }
 
 // Main method
