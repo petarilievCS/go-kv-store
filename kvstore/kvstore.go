@@ -56,11 +56,34 @@ func (s *KVStore) Get(key string) (string, error) {
 	return value, nil
 }
 
+func (s *KVStore) Contains(key string) bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	_, exists := s.data[key]
+	return exists
+}
+
 func (s *KVStore) SetEx(key string, value string, ttl int) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.data[key] = value
 	s.expirations[key] = time.Now().Add(time.Duration(ttl) * time.Second)
+}
+
+func (s *KVStore) Rename(oldKey string, newKey string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	value := s.data[oldKey]
+	delete(s.data, oldKey)
+	s.data[newKey] = value
+
+	expiration, hasExpiration := s.expirations[oldKey]
+	if hasExpiration {
+		delete(s.expirations, oldKey)
+		s.expirations[newKey] = expiration
+	}
 }
 
 func (s *KVStore) Delete(key string) error {

@@ -17,23 +17,28 @@ import (
 )
 
 const (
-	OK              = "OK"
-	GetCommand      = "GET"
-	SetCommand      = "SET"
-	SetexCommand    = "SETEX"
-	StatsCommand    = "STATS"
-	DeleteCommand   = "DELETE"
-	DeleteexCommand = "DELETEEX"
-	FlushCommand    = "FLUSH"
-	KeysCommand     = "KEYS"
-	InfoCommand     = "INFO"
-	PingCommand     = "PING"
-	ShutDownCommand = "SHUTDOWN"
-	Port            = ":8080"
-	Timeout         = 30
-	FileName        = "data.txt"
-	InvalidCommand  = "ERROR: Invalid command."
-	ServerVersion   = "1.0.0"
+	OK               = "OK"
+	GetCommand       = "GET"
+	KeyExistsCommand = "KEYEXISTS"
+	SetCommand       = "SET"
+	SetexCommand     = "SETEX"
+	RenameCommand    = "RENAME"
+	StatsCommand     = "STATS"
+	DeleteCommand    = "DELETE"
+	DeleteexCommand  = "DELETEEX"
+	FlushCommand     = "FLUSH"
+	SaveCommand      = "SAVE"
+	LoadCommand      = "LOAD"
+	KeysCommand      = "KEYS"
+	InfoCommand      = "INFO"
+	HelpCommand      = "HELP"
+	PingCommand      = "PING"
+	ShutDownCommand  = "SHUTDOWN"
+	Port             = ":8080"
+	Timeout          = 30
+	FileName         = "data.txt"
+	InvalidCommand   = "ERROR: Invalid command."
+	ServerVersion    = "1.0.0"
 )
 
 var kv = kvstore.New()
@@ -101,10 +106,14 @@ func processCommand(tokens []string) string {
 	switch cmd {
 	case GetCommand:
 		return handleGet(tokens)
+	case KeyExistsCommand:
+		return handleKeyExists(tokens)
 	case SetCommand:
 		return handleSet(tokens)
 	case SetexCommand:
 		return handleSetEx(tokens)
+	case RenameCommand:
+		return handleRename(tokens)
 	case StatsCommand:
 		return handleStats(tokens)
 	case DeleteCommand:
@@ -113,10 +122,16 @@ func processCommand(tokens []string) string {
 		return handleDeleteEx(tokens)
 	case FlushCommand:
 		return handleFlush(tokens)
+	case SaveCommand:
+		return handleSave(tokens)
+	case LoadCommand:
+		return handleLoad(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
 	case InfoCommand:
 		return handleInfo(tokens)
+	case HelpCommand:
+		return handleHelp(tokens)
 	case PingCommand:
 		return handlePing(tokens)
 	case ShutDownCommand:
@@ -145,6 +160,24 @@ func handleGet(tokens []string) string {
 	log.Printf("[INFO] GET %s -> %s\n", key, value)
 	metrics.Inc("GET")
 	return value
+}
+
+func handleKeyExists(tokens []string) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("KEYEXISTS", "KEYEXISTS <key>")
+	}
+
+	key := tokens[1]
+	keyExists := kv.Contains(key)
+	metrics.Inc("KEYEXISTS")
+
+	if keyExists {
+		log.Printf("[INFO] KEYEXISTS %s -> 1\n", key)
+		return "1"
+	}
+	log.Printf("[INFO] KEYEXISTS %s -> 0\n", key)
+	return "0"
 }
 
 func handleSet(tokens []string) string {
@@ -178,6 +211,26 @@ func handleSetEx(tokens []string) string {
 	kv.SetEx(key, value, ttl)
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
 	metrics.Inc("SETEX")
+	return OK
+}
+
+func handleRename(tokens []string) string {
+	if len(tokens) != 3 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("RENAME", "RENAME <oldKey> <newKey>")
+	}
+
+	oldKey, newKey := tokens[1], tokens[2]
+	oldKeyExists := kv.Contains(oldKey)
+	if !oldKeyExists {
+		log.Printf("[WARN] RENAME %s -> key not found\n", oldKey)
+		metrics.Inc("ERROR")
+		return kvstore.KeyNotFound
+	}
+
+	kv.Rename(oldKey, newKey)
+	log.Printf("[INFO] RENAME %s -> %s\n", oldKey, newKey)
+	metrics.Inc("RENAME")
 	return OK
 }
 
@@ -255,6 +308,42 @@ func handleFlush(tokens []string) string {
 	return OK
 }
 
+func handleSave(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("SAVE", "SAVE")
+	}
+
+	err := kv.SaveToDisk(FileName)
+	if err != nil {
+		log.Printf("[ERROR] Failed to save data: %v\n", err)
+		metrics.Inc("ERROR")
+		return fmt.Sprintf("ERROR: Failed to save to disk: %v", err)
+	}
+
+	log.Println("[INFO] SAVE: store saved to disk")
+	metrics.Inc("SAVE")
+	return OK
+}
+
+func handleLoad(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("LOAD", "LOAD")
+	}
+
+	err := kv.LoadFromDisk(FileName)
+	if err != nil {
+		log.Printf("[ERROR] Failed to load data: %v\n", err)
+		metrics.Inc("ERROR")
+		return fmt.Sprintf("ERROR: Failed to load data from disk: %v", err)
+	}
+
+	log.Println("[INFO] LOAD: loaded stroe from disk")
+	metrics.Inc("LOAD")
+	return OK
+}
+
 func handleKeys(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid KEYS command format")
@@ -274,6 +363,8 @@ func handleKeys(tokens []string) string {
 
 func handleInfo(tokens []string) string {
 	if len(tokens) != 1 {
+		log.Println("[WARN] Invalid INFO command format")
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("INFO", "INFO")
 	}
 	uptime := time.Since(startTime)
@@ -301,6 +392,33 @@ func handleInfo(tokens []string) string {
 	metrics.Inc("INFO")
 	log.Println("[INFO] INFO command requested")
 	return info
+}
+
+func handleHelp(tokens []string) string {
+	if len(tokens) != 1 {
+		log.Println("[WARN] Invalid HELP command format")
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("INFO", "INFO")
+	}
+
+	metrics.Inc("HELP")
+	log.Println("[INFO] HELP command requested")
+	return `Available commands:
+	SET <key> <value>          - Store a key-value pair
+	GET <key>                  - Retrieve a value
+	SETEX <key> <value> <ttl>  - Store a key-value pair with expiration
+	DELETE <key>               - Remove a key
+	DELETEEX <key> <ttl>       - Remove a key after a delay
+	KEYEXISTS <key>            - Check if a key exists
+	FLUSH                      - Clear all keys
+	KEYS                       - List all keys
+	STATS                      - Show usage metrics
+	INFO                       - Show server config
+	PING                       - Check if server is alive
+	SAVE                       - Save store to disk
+	LOAD                       - Load store from disk
+	SHUTDOWN                   - Gracefully stop the server
+	HELP                       - Show this help message`
 }
 
 func handlePing(tokens []string) string {
@@ -358,10 +476,9 @@ func statsString() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Active clients: %d\n", snapshot.ActiveClients))
 
-	// List of known tracked commands you want to show (including "ERROR")
 	tracked := []string{
-		"SET", "GET", "SETEX", "DELETE", "DELETEEX", "FLUSH",
-		"KEYS", "PING", "INFO", "ERROR",
+		"SET", "GET", "SETEX", "DELETE", "DELETEEX", "KEYEXISTS", "FLUSH", "SAVE", "LOAD",
+		"KEYS", "PING", "INFO", "HELP", "ERROR",
 	}
 
 	for _, cmd := range tracked {
