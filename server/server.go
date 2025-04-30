@@ -38,7 +38,7 @@ const (
 
 var kv = kvstore.New()
 var connections = NewConnections()
-var metrics = Metrics{}
+var metrics = NewMetrics()
 var done = make(chan struct{})
 var startTime = time.Now()
 
@@ -93,7 +93,7 @@ func handleConnection(conn net.Conn) {
 func processCommand(tokens []string) string {
 	if len(tokens) == 0 {
 		log.Println("[WARN] Received empty command")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return InvalidCommand
 	}
 
@@ -123,7 +123,7 @@ func processCommand(tokens []string) string {
 		return handleShutDown(tokens)
 	default:
 		log.Printf("[WARN] Invalid command: %s\n", cmd)
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return InvalidCommand
 	}
 }
@@ -132,38 +132,38 @@ func processCommand(tokens []string) string {
 func handleGet(tokens []string) string {
 	if len(tokens) != 2 {
 		log.Println("[WARN] Invalid GET command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("GET", "GET <key>")
 	}
 	key := tokens[1]
 	value, err := kv.Get(key)
 	if err != nil {
 		log.Printf("[WARN] GET %s -> key not found\n", key)
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return kvstore.KeyNotFound
 	}
 	log.Printf("[INFO] GET %s -> %s\n", key, value)
-	metrics.IncGet()
+	metrics.Inc("GET")
 	return value
 }
 
 func handleSet(tokens []string) string {
 	if len(tokens) != 3 {
 		log.Println("[WARN] Invalid SET command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("SET", "SET <key> <value>")
 	}
 	key, value := tokens[1], tokens[2]
 	kv.Set(key, value)
 	log.Printf("[INFO] SET %s %s -> OK\n", key, value)
-	metrics.IncSet()
+	metrics.Inc("SET")
 	return OK
 }
 
 func handleSetEx(tokens []string) string {
 	if len(tokens) != 4 {
 		log.Println("[WARN] Invalid SETEX command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("SETEX", "SETEX <key> <value> <ttl_seconds>")
 	}
 	key, value, ttlStr := tokens[1], tokens[2], tokens[3]
@@ -171,20 +171,20 @@ func handleSetEx(tokens []string) string {
 	ttl, err := strconv.Atoi(ttlStr)
 	if err != nil || ttl <= 0 {
 		log.Println("[WARN] TTL in SETEX is not a positive integer")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidTTL(ttlStr)
 	}
 
 	kv.SetEx(key, value, ttl)
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
-	metrics.IncSetEx()
+	metrics.Inc("SETEX")
 	return OK
 }
 
 func handleStats(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid STATS command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("STATS", "STATS")
 	}
 	return statsString()
@@ -193,17 +193,17 @@ func handleStats(tokens []string) string {
 func handleDelete(tokens []string) string {
 	if len(tokens) != 2 {
 		log.Println("[WARN] Invalid DELETE command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("DELETE", "DELETE <key>")
 	}
 	key := tokens[1]
 	err := kv.Delete(key)
 	if err != nil {
 		log.Printf("[WARN] GET %s -> key not found\n", key)
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return kvstore.KeyNotFound
 	}
-	metrics.IncDelete()
+	metrics.Inc("DELETE")
 	log.Printf("[INFO] DELETE %s -> OK\n", tokens[1])
 	return OK
 }
@@ -211,7 +211,7 @@ func handleDelete(tokens []string) string {
 func handleDeleteEx(tokens []string) string {
 	if len(tokens) != 3 {
 		log.Println("[WARN] Invalid DELETEX command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("DELETEEX", "DELETEEX <key> <ttl_seconds>")
 	}
 
@@ -221,7 +221,7 @@ func handleDeleteEx(tokens []string) string {
 	_, err := kv.Get(key)
 	if err != nil {
 		log.Printf("[WARN] DELETEX %s %s -> key not found\n", key, delayStr)
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return kvstore.KeyNotFound
 	}
 
@@ -229,12 +229,12 @@ func handleDeleteEx(tokens []string) string {
 	delay, err := strconv.Atoi(delayStr)
 	if err != nil || delay <= 0 {
 		log.Printf("[WARN] Time in DELETEX is not a positive integer: %s\n", delayStr)
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidTTL(delayStr)
 	}
 
 	// Schedule deletion
-	metrics.IncDeleteEx()
+	metrics.Inc("DELETEEX")
 	time.AfterFunc(time.Duration(delay)*time.Second, func() {
 		log.Printf("[INFO] DELETEEX %s %s -> OK\n", key, delayStr)
 		kv.Delete(key)
@@ -244,13 +244,13 @@ func handleDeleteEx(tokens []string) string {
 
 func handleFlush(tokens []string) string {
 	if len(tokens) != 1 {
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("FLUSH", "FLUSH")
 	}
 
 	kv.Flush()
 	log.Println("[INFO] FLUSH: store cleared")
-	metrics.IncFlush()
+	metrics.Inc("FLUSH")
 
 	return OK
 }
@@ -258,12 +258,12 @@ func handleFlush(tokens []string) string {
 func handleKeys(tokens []string) string {
 	if len(tokens) != 1 {
 		log.Println("[WARN] Invalid KEYS command format")
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("KEYS", "KEYS")
 	}
 
 	keys := kv.Keys()
-	metrics.IncKeys()
+	metrics.Inc("KEYS")
 	log.Printf("[INFO] KEYS -> %v\n", keys)
 
 	if len(keys) == 0 {
@@ -297,22 +297,24 @@ func handleInfo(tokens []string) string {
 		commandsProcessed,
 		keysInStore,
 	)
+
+	metrics.Inc("INFO")
 	log.Println("[INFO] INFO command requested")
 	return info
 }
 
 func handlePing(tokens []string) string {
 	if len(tokens) != 1 {
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("PING", "PING")
 	}
-	metrics.IncPing()
+	metrics.Inc("PING")
 	return "PONG"
 }
 
 func handleShutDown(tokens []string) string {
 	if len(tokens) != 1 {
-		metrics.IncError()
+		metrics.Inc("ERROR")
 		return formatInvalidCommand("SHUTDOWN", "SHUTDOWN")
 	}
 	go triggerSIGINT()
@@ -353,19 +355,21 @@ func disconnect(conn net.Conn) {
 func statsString() string {
 	snapshot := metrics.Snapshot()
 
-	return fmt.Sprintf(
-		"Active clients: %d\nSET: %d\nGET: %d\nSETEX: %d\nDELETE: %d\nDELETEEX: %d\nFLUSH: %d\nKEYS: %d\n PING: %d\nErrors: %d",
-		snapshot.ActiveClients,
-		snapshot.SetCount,
-		snapshot.GetCount,
-		snapshot.SetExCount,
-		snapshot.DeleteCount,
-		snapshot.DeleteExCount,
-		snapshot.FlushCount,
-		snapshot.KeysCount,
-		snapshot.PingCount,
-		snapshot.ErrorCount,
-	)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Active clients: %d\n", snapshot.ActiveClients))
+
+	// List of known tracked commands you want to show (including "ERROR")
+	tracked := []string{
+		"SET", "GET", "SETEX", "DELETE", "DELETEEX", "FLUSH",
+		"KEYS", "PING", "INFO", "ERROR",
+	}
+
+	for _, cmd := range tracked {
+		count := snapshot.Get(cmd)
+		sb.WriteString(fmt.Sprintf("%s: %d\n", cmd, count))
+	}
+
+	return sb.String()
 }
 
 func formatInvalidCommand(cmd, expected string) string {
