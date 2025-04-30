@@ -7,8 +7,9 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
 	"strings"
+
+	"github.com/peterh/liner"
 )
 
 const (
@@ -64,28 +65,36 @@ func (c *KVClient) SendCommand(command string) (string, error) {
 }
 
 func (c *KVClient) RunInteractive() error {
-	stdinReader := bufio.NewReader(os.Stdin)
+	line := liner.NewLiner()
+	defer line.Close()
+
+	line.SetCtrlCAborts(true)
 	for {
-		fmt.Print("kv> ") // keep this for user interaction
-		input, err := stdinReader.ReadString('\n')
+		cmd, err := line.Prompt("kv> ")
 		if err != nil {
+			if err == liner.ErrPromptAborted {
+				fmt.Println("Aborted.")
+				break
+			}
 			log.Printf("[ERROR] Error reading input: %v", err)
 			continue
 		}
 
-		input = strings.TrimSpace(input)
-		if input == ExitCommand || input == QuitCommand {
+		cmd = strings.TrimSpace(cmd)
+		if cmd == ExitCommand || cmd == QuitCommand {
 			log.Println("[INFO] Client exited interactive session")
 			fmt.Println("Bye 👋")
 			break
 		}
 
-		if err := validateInput(input); err != nil {
+		line.AppendHistory(cmd)
+
+		if err := validateInput(cmd); err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		response, err := c.SendCommand(input)
+		response, err := c.SendCommand(cmd)
 		if err != nil {
 			log.Printf("[ERROR] Command failed: %v", err)
 			continue
