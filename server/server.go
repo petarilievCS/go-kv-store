@@ -21,6 +21,7 @@ const (
 	GetCommand       = "GET"
 	MGetCommand      = "MGET"
 	KeyExistsCommand = "KEYEXISTS"
+	TypeCommand      = "TYPE"
 	SetCommand       = "SET"
 	MSetCommand      = "MSET"
 	SetexCommand     = "SETEX"
@@ -114,6 +115,8 @@ func processCommand(tokens []string) string {
 		return handleMGet(tokens)
 	case KeyExistsCommand:
 		return handleKeyExists(tokens)
+	case TypeCommand:
+		return handleType(tokens)
 	case SetCommand:
 		return handleSet(tokens)
 	case MSetCommand:
@@ -211,6 +214,20 @@ func handleKeyExists(tokens []string) string {
 	}
 	log.Printf("[INFO] KEYEXISTS %s -> 0\n", key)
 	return "0"
+}
+
+func handleType(tokens []string) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("TYPE", "TYPE <key>")
+	}
+
+	key := tokens[1]
+	if kv.Contains(key) {
+		return "string"
+	}
+	metrics.Inc("TYPE")
+	return "none"
 }
 
 func handleSet(tokens []string) string {
