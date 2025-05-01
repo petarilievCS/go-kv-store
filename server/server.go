@@ -25,6 +25,7 @@ const (
 	SetCommand       = "SET"
 	MSetCommand      = "MSET"
 	SetexCommand     = "SETEX"
+	ExpireCommand    = "EXPIRE"
 	TTLCommand       = "TTL"
 	RenameCommand    = "RENAME"
 	StatsCommand     = "STATS"
@@ -123,6 +124,8 @@ func processCommand(tokens []string) string {
 		return handleMSet(tokens)
 	case SetexCommand:
 		return handleSetEx(tokens)
+	case ExpireCommand:
+		return handleExpire(tokens)
 	case TTLCommand:
 		return handleTTL(tokens)
 	case RenameCommand:
@@ -277,6 +280,32 @@ func handleSetEx(tokens []string) string {
 	kv.SetEx(key, value, ttl)
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
 	metrics.Inc("SETEX")
+	return OK
+}
+
+func handleExpire(tokens []string) string {
+	if len(tokens) != 3 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("EXPIRE", "EXPIRE <key> <ttl_seconds>")
+	}
+
+	key, ttlStr := tokens[1], tokens[2]
+
+	ttl, err := strconv.Atoi(ttlStr)
+	if err != nil || ttl <= 0 {
+		log.Println("[WARN] TTL in SETEX is not a positive integer")
+		metrics.Inc("ERROR")
+		return formatInvalidTTL(ttlStr)
+	}
+
+	value, err := kv.Get(key)
+	if err != nil {
+		return "0"
+	}
+
+	kv.SetEx(key, value, ttl)
+	log.Printf("[INFO] EXPIRE %s -> TTL set to %ds\n", key, ttl)
+	metrics.Inc("EXPIRE")
 	return OK
 }
 
