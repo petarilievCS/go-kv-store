@@ -21,6 +21,7 @@ const (
 	GetCommand       = "GET"
 	KeyExistsCommand = "KEYEXISTS"
 	SetCommand       = "SET"
+	MSetCommand      = "MSET"
 	SetexCommand     = "SETEX"
 	TTLCommand       = "TTL"
 	RenameCommand    = "RENAME"
@@ -112,6 +113,8 @@ func processCommand(tokens []string) string {
 		return handleKeyExists(tokens)
 	case SetCommand:
 		return handleSet(tokens)
+	case MSetCommand:
+		return handleMSet(tokens)
 	case SetexCommand:
 		return handleSetEx(tokens)
 	case TTLCommand:
@@ -196,6 +199,22 @@ func handleSet(tokens []string) string {
 	kv.Set(key, value)
 	log.Printf("[INFO] SET %s %s -> OK\n", key, value)
 	metrics.Inc("SET")
+	return OK
+}
+
+func handleMSet(tokens []string) string {
+	if len(tokens) < 3 || len(tokens)%2 != 1 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("MSET", "MSET <key1> <val1> <key2> <val2> ...")
+	}
+
+	for i := 1; i < len(tokens); i += 2 {
+		key, value := tokens[i], tokens[i+1]
+		kv.Set(key, value)
+	}
+
+	log.Printf("[INFO] MSET -> %d keys set\n", len(tokens)/2)
+	metrics.Inc("MSET")
 	return OK
 }
 
