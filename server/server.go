@@ -29,6 +29,7 @@ const (
 	PersistCommand     = "PERSIST"
 	TTLCommand         = "TTL"
 	RenameCommand      = "RENAME"
+	RenameNXCommand    = "RENAME_NX"
 	StatsCommand       = "STATS"
 	DeleteCommand      = "DELETE"
 	DelCommand         = "DEL"
@@ -38,6 +39,7 @@ const (
 	LoadCommand        = "LOAD"
 	KeysCommand        = "KEYS"
 	KeysWithTTLCommand = "KEYS_WITH_TTL"
+	KeysNoTTLCommand   = "KEYS_NO_TTL"
 	InfoCommand        = "INFO"
 	HelpCommand        = "HELP"
 	PingCommand        = "PING"
@@ -134,6 +136,8 @@ func processCommand(tokens []string) string {
 		return handleTTL(tokens)
 	case RenameCommand:
 		return handleRename(tokens)
+	case RenameNXCommand:
+		return handleRenameNX(tokens)
 	case StatsCommand:
 		return handleStats(tokens)
 	case DeleteCommand:
@@ -152,6 +156,8 @@ func processCommand(tokens []string) string {
 		return handleKeys(tokens)
 	case KeysWithTTLCommand:
 		return handleKeysWithTTL(tokens)
+	case KeysNoTTLCommand:
+		return handleKeysNoTTL(tokens)
 	case InfoCommand:
 		return handleInfo(tokens)
 	case HelpCommand:
@@ -355,17 +361,35 @@ func handleRename(tokens []string) string {
 	}
 
 	oldKey, newKey := tokens[1], tokens[2]
-	oldKeyExists := kv.Contains(oldKey)
-	if !oldKeyExists {
-		log.Printf("[WARN] RENAME %s -> key not found\n", oldKey)
+	result := kv.Rename(oldKey, newKey)
+
+	if result == 0 {
 		metrics.Inc("ERROR")
-		return kvstore.KeyNotFound
+		return strconv.Itoa(result)
 	}
 
-	kv.Rename(oldKey, newKey)
 	log.Printf("[INFO] RENAME %s -> %s\n", oldKey, newKey)
 	metrics.Inc("RENAME")
-	return OK
+	return strconv.Itoa(result)
+}
+
+func handleRenameNX(tokens []string) string {
+	if len(tokens) != 3 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("RENAME_NX", "RENAME_NX <oldKey> <newKey>")
+	}
+
+	oldKey, newKey := tokens[1], tokens[2]
+	result := kv.RenameNX(oldKey, newKey)
+
+	if result == 0 {
+		metrics.Inc("ERROR")
+		return strconv.Itoa(result)
+	}
+
+	log.Printf("[INFO] RENAME_NX %s -> %s success\n", oldKey, newKey)
+	metrics.Inc("RENAME_NX")
+	return strconv.Itoa(result)
 }
 
 func handleStats(tokens []string) string {
@@ -522,6 +546,22 @@ func handleKeysWithTTL(tokens []string) string {
 	keys := kv.KeysWithTTL()
 	metrics.Inc("KEYS_WITH_TTL")
 	log.Printf("[INFO] KEYS_WITH_TTL -> %v\n", keys)
+
+	if len(keys) == 0 {
+		return "EMPTY"
+	}
+	return strings.Join(keys, "\n")
+}
+
+func handleKeysNoTTL(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("KEYS_NO_TTL", "KEYS_NO_TTL")
+	}
+
+	keys := kv.KeysNoTTL()
+	metrics.Inc("KEYS_NO_TTL")
+	log.Printf("[INFO] KEYSKEYS_NO_TTL_WITH_TTL -> %v\n", keys)
 
 	if len(keys) == 0 {
 		return "EMPTY"

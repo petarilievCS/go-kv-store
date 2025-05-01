@@ -111,11 +111,15 @@ func (s *KVStore) Persist(key string) int {
 	return 1
 }
 
-func (s *KVStore) Rename(oldKey string, newKey string) {
+func (s *KVStore) Rename(oldKey string, newKey string) int {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	value := s.data[oldKey]
+	value, exists := s.data[oldKey]
+	if !exists {
+		return 0
+	}
+
 	delete(s.data, oldKey)
 	s.data[newKey] = value
 
@@ -124,6 +128,32 @@ func (s *KVStore) Rename(oldKey string, newKey string) {
 		delete(s.expirations, oldKey)
 		s.expirations[newKey] = expiration
 	}
+	return 1
+}
+
+func (s *KVStore) RenameNX(oldKey string, newKey string) int {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	value, exists := s.data[oldKey]
+	if !exists {
+		return 0
+	}
+
+	_, newKeyExists := s.data[newKey]
+	if newKeyExists {
+		return 0
+	}
+
+	delete(s.data, oldKey)
+	s.data[newKey] = value
+
+	expiration, hasExpiration := s.expirations[oldKey]
+	if hasExpiration {
+		delete(s.expirations, oldKey)
+		s.expirations[newKey] = expiration
+	}
+	return 1
 }
 
 func (s *KVStore) Delete(key string) error {
@@ -167,6 +197,22 @@ func (s *KVStore) KeysWithTTL() []string {
 	keys := make([]string, 0, len(s.expirations))
 	for key := range s.expirations {
 		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (s *KVStore) KeysNoTTL() []string {
+	s.cleanUp()
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	var keys []string
+	for key := range s.data {
+		_, hasExpiration := s.expirations[key]
+		if !hasExpiration {
+			keys = append(keys, key)
+		}
 	}
 	return keys
 }
