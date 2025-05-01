@@ -26,6 +26,7 @@ const (
 	RenameCommand    = "RENAME"
 	StatsCommand     = "STATS"
 	DeleteCommand    = "DELETE"
+	DelCommand       = "DEL"
 	DeleteexCommand  = "DELETEEX"
 	FlushCommand     = "FLUSH"
 	SaveCommand      = "SAVE"
@@ -121,6 +122,8 @@ func processCommand(tokens []string) string {
 		return handleStats(tokens)
 	case DeleteCommand:
 		return handleDelete(tokens)
+	case DelCommand:
+		return handleDel(tokens)
 	case DeleteexCommand:
 		return handleDeleteEx(tokens)
 	case FlushCommand:
@@ -283,6 +286,24 @@ func handleDelete(tokens []string) string {
 	metrics.Inc("DELETE")
 	log.Printf("[INFO] DELETE %s -> OK\n", tokens[1])
 	return OK
+}
+
+func handleDel(tokens []string) string {
+	if len(tokens) < 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("DEL", "DEL <key1> <key2> ...")
+	}
+
+	count := 0
+	for _, key := range tokens[1:] {
+		err := kv.Delete(key)
+		if err == nil {
+			count++
+		}
+	}
+	log.Printf("[INFO] DEL %v -> %d keys deleted\n", tokens[1:], count)
+	metrics.Inc("DEL")
+	return strconv.Itoa(count)
 }
 
 func handleDeleteEx(tokens []string) string {
