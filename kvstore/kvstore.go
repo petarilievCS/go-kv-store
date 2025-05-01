@@ -93,6 +93,24 @@ func (s *KVStore) TTL(key string) int {
 	return secondsRemaining
 }
 
+func (s *KVStore) Persist(key string) int {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	_, keyExists := s.data[key]
+	if !keyExists {
+		return 0
+	}
+
+	_, expirationExists := s.expirations[key]
+	if !expirationExists {
+		return 0
+	}
+
+	delete(s.expirations, key)
+	return 1
+}
+
 func (s *KVStore) Rename(oldKey string, newKey string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -135,6 +153,19 @@ func (s *KVStore) Keys() []string {
 
 	keys := make([]string, 0, len(s.data))
 	for key := range s.data {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (s *KVStore) KeysWithTTL() []string {
+	s.cleanUp()
+
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	keys := make([]string, 0, len(s.expirations))
+	for key := range s.expirations {
 		keys = append(keys, key)
 	}
 	return keys

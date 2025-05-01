@@ -17,34 +17,36 @@ import (
 )
 
 const (
-	OK               = "OK"
-	GetCommand       = "GET"
-	MGetCommand      = "MGET"
-	KeyExistsCommand = "KEYEXISTS"
-	TypeCommand      = "TYPE"
-	SetCommand       = "SET"
-	MSetCommand      = "MSET"
-	SetexCommand     = "SETEX"
-	ExpireCommand    = "EXPIRE"
-	TTLCommand       = "TTL"
-	RenameCommand    = "RENAME"
-	StatsCommand     = "STATS"
-	DeleteCommand    = "DELETE"
-	DelCommand       = "DEL"
-	DeleteexCommand  = "DELETEEX"
-	FlushCommand     = "FLUSH"
-	SaveCommand      = "SAVE"
-	LoadCommand      = "LOAD"
-	KeysCommand      = "KEYS"
-	InfoCommand      = "INFO"
-	HelpCommand      = "HELP"
-	PingCommand      = "PING"
-	ShutDownCommand  = "SHUTDOWN"
-	Port             = ":8080"
-	Timeout          = 30
-	FileName         = "data.txt"
-	InvalidCommand   = "ERROR: Invalid command."
-	ServerVersion    = "1.0.0"
+	OK                 = "OK"
+	GetCommand         = "GET"
+	MGetCommand        = "MGET"
+	KeyExistsCommand   = "KEYEXISTS"
+	TypeCommand        = "TYPE"
+	SetCommand         = "SET"
+	MSetCommand        = "MSET"
+	SetexCommand       = "SETEX"
+	ExpireCommand      = "EXPIRE"
+	PersistCommand     = "PERSIST"
+	TTLCommand         = "TTL"
+	RenameCommand      = "RENAME"
+	StatsCommand       = "STATS"
+	DeleteCommand      = "DELETE"
+	DelCommand         = "DEL"
+	DeleteexCommand    = "DELETEEX"
+	FlushCommand       = "FLUSH"
+	SaveCommand        = "SAVE"
+	LoadCommand        = "LOAD"
+	KeysCommand        = "KEYS"
+	KeysWithTTLCommand = "KEYS_WITH_TTL"
+	InfoCommand        = "INFO"
+	HelpCommand        = "HELP"
+	PingCommand        = "PING"
+	ShutDownCommand    = "SHUTDOWN"
+	Port               = ":8080"
+	Timeout            = 30
+	FileName           = "data.txt"
+	InvalidCommand     = "ERROR: Invalid command."
+	ServerVersion      = "1.0.0"
 )
 
 var kv = kvstore.New()
@@ -126,6 +128,8 @@ func processCommand(tokens []string) string {
 		return handleSetEx(tokens)
 	case ExpireCommand:
 		return handleExpire(tokens)
+	case PersistCommand:
+		return handlePersist(tokens)
 	case TTLCommand:
 		return handleTTL(tokens)
 	case RenameCommand:
@@ -146,6 +150,8 @@ func processCommand(tokens []string) string {
 		return handleLoad(tokens)
 	case KeysCommand:
 		return handleKeys(tokens)
+	case KeysWithTTLCommand:
+		return handleKeysWithTTL(tokens)
 	case InfoCommand:
 		return handleInfo(tokens)
 	case HelpCommand:
@@ -307,6 +313,18 @@ func handleExpire(tokens []string) string {
 	log.Printf("[INFO] EXPIRE %s -> TTL set to %ds\n", key, ttl)
 	metrics.Inc("EXPIRE")
 	return OK
+}
+
+func handlePersist(tokens []string) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("PERSIST", "PERSIST <key>")
+	}
+	key := tokens[1]
+	result := kv.Persist(key)
+	log.Printf("[INFO] PERSIST %s -> no TTL to remove\n", key)
+	metrics.Inc("PERSIST")
+	return strconv.Itoa(result)
 }
 
 func handleTTL(tokens []string) string {
@@ -488,6 +506,22 @@ func handleKeys(tokens []string) string {
 	keys := kv.Keys()
 	metrics.Inc("KEYS")
 	log.Printf("[INFO] KEYS -> %v\n", keys)
+
+	if len(keys) == 0 {
+		return "EMPTY"
+	}
+	return strings.Join(keys, "\n")
+}
+
+func handleKeysWithTTL(tokens []string) string {
+	if len(tokens) != 1 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("KEYS_WITH_TTL", "KEYS_WITH_TTL")
+	}
+
+	keys := kv.KeysWithTTL()
+	metrics.Inc("KEYS_WITH_TTL")
+	log.Printf("[INFO] KEYS_WITH_TTL -> %v\n", keys)
 
 	if len(keys) == 0 {
 		return "EMPTY"
