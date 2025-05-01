@@ -19,6 +19,7 @@ import (
 const (
 	OK               = "OK"
 	GetCommand       = "GET"
+	MGetCommand      = "MGET"
 	KeyExistsCommand = "KEYEXISTS"
 	SetCommand       = "SET"
 	MSetCommand      = "MSET"
@@ -109,6 +110,8 @@ func processCommand(tokens []string) string {
 	switch cmd {
 	case GetCommand:
 		return handleGet(tokens)
+	case MGetCommand:
+		return handleMGet(tokens)
 	case KeyExistsCommand:
 		return handleKeyExists(tokens)
 	case SetCommand:
@@ -169,6 +172,27 @@ func handleGet(tokens []string) string {
 	log.Printf("[INFO] GET %s -> %s\n", key, value)
 	metrics.Inc("GET")
 	return value
+}
+
+func handleMGet(tokens []string) string {
+	if len(tokens) < 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("MGET", "MGET <key1> <key2> ...")
+	}
+
+	var sb strings.Builder
+	for _, key := range tokens[1:] {
+		value, err := kv.Get(key)
+		if err != nil {
+			sb.WriteString("nil\n")
+		} else {
+			sb.WriteString(value + "\n")
+		}
+	}
+
+	log.Printf("[INFO] MGET %v\n", tokens[1:])
+	metrics.Inc("MGET")
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func handleKeyExists(tokens []string) string {
