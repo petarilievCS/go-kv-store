@@ -71,6 +71,28 @@ func (s *KVStore) SetEx(key string, value string, ttl int) {
 	s.expirations[key] = time.Now().Add(time.Duration(ttl) * time.Second)
 }
 
+func (s *KVStore) TTL(key string) int {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	_, exists := s.data[key]
+	if !exists {
+		return -2
+	}
+
+	ttl, exists := s.expirations[key]
+	if !exists {
+		return -1
+	}
+
+	secondsRemaining := int(time.Until(ttl).Seconds())
+	if secondsRemaining < 0 {
+		return -2
+	}
+
+	return secondsRemaining
+}
+
 func (s *KVStore) Rename(oldKey string, newKey string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -182,7 +204,8 @@ func (s *KVStore) cleanUp() {
 	// Remove expired keys
 	for key, _ := range s.data {
 		if s.expired(key) {
-			s.Delete(key)
+			delete(s.data, key)
+			delete(s.expirations, key)
 		}
 	}
 }

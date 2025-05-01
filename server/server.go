@@ -22,6 +22,7 @@ const (
 	KeyExistsCommand = "KEYEXISTS"
 	SetCommand       = "SET"
 	SetexCommand     = "SETEX"
+	TTLCommand       = "TTL"
 	RenameCommand    = "RENAME"
 	StatsCommand     = "STATS"
 	DeleteCommand    = "DELETE"
@@ -112,6 +113,8 @@ func processCommand(tokens []string) string {
 		return handleSet(tokens)
 	case SetexCommand:
 		return handleSetEx(tokens)
+	case TTLCommand:
+		return handleTTL(tokens)
 	case RenameCommand:
 		return handleRename(tokens)
 	case StatsCommand:
@@ -212,6 +215,27 @@ func handleSetEx(tokens []string) string {
 	log.Printf("[INFO] SETEX %s %s (TTL: %d) -> OK\n", key, value, ttl)
 	metrics.Inc("SETEX")
 	return OK
+}
+
+func handleTTL(tokens []string) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("TTL", "TTL <key>")
+	}
+	key := tokens[1]
+	ttl := kv.TTL(key)
+
+	switch ttl {
+	case -2:
+		log.Printf("[INFO] TTL %s -> key not found", key)
+	case -1:
+		log.Printf("[INFO] TTL %s -> no expiration", key)
+	default:
+		log.Printf("[INFO] TTL %s -> %d seconds", key, ttl)
+	}
+
+	metrics.Inc("TTL")
+	return strconv.Itoa(ttl)
 }
 
 func handleRename(tokens []string) string {
