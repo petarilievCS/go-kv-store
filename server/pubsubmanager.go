@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"sync"
 )
@@ -24,7 +25,7 @@ func (m *PubSubManager) Subscribe(channel string, conn net.Conn) {
 	if m.Subscribtions[channel] == nil {
 		m.Subscribtions[channel] = make(map[net.Conn]bool)
 	}
-	connections := m.Subscribtions[channel][conn] = true
+	m.Subscribtions[channel][conn] = true
 }
 
 func (m *PubSubManager) Unsubscribe(channel string, conn net.Conn) {
@@ -46,15 +47,19 @@ func (m *PubSubManager) Publish(channel string, message string) int {
 
 	connections, exists := m.Subscribtions[channel]
 	if !exists {
-		return
+		return 0
 	}
 
 	count := 0
+	message = fmt.Sprintf("[MESSAGE %s] %s\nEND\n", channel, message)
 	for conn := range connections {
-		_, err := fmt.Fprintf(conn, message+"\n")
-		if err != 0 {
+		_, err := fmt.Fprint(conn, message)
+		if err != nil {
+			log.Printf("[ERROR] %s\n", err)
+		} else {
 			count++
 		}
+
 	}
 	return count
 }

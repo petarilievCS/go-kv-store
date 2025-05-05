@@ -44,6 +44,9 @@ const (
 	HelpCommand        = "HELP"
 	PingCommand        = "PING"
 	ShutDownCommand    = "SHUTDOWN"
+	SubscribeCommand   = "SUBSCRIBE"
+	UnsubscribeCommand = "UNSUBSCRIBE"
+	PublishCommand     = "PUBLISH"
 	Port               = ":8080"
 	Timeout            = 30
 	FileName           = "data.txt"
@@ -56,6 +59,7 @@ var connections = NewConnections()
 var metrics = NewMetrics()
 var done = make(chan struct{})
 var startTime = time.Now()
+var pubsub = NewPubSubManager()
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
@@ -92,7 +96,7 @@ func handleConnection(conn net.Conn) {
 		message = strings.TrimSpace(message)
 		tokens := strings.Split(message, " ")
 
-		response := processCommand(tokens)
+		response := processCommand(tokens, conn)
 		response += "\nEND\n"
 
 		_, err = conn.Write([]byte(response))
@@ -105,7 +109,7 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func processCommand(tokens []string) string {
+func processCommand(tokens []string, conn net.Conn) string {
 	if len(tokens) == 0 {
 		log.Println("[WARN] Received empty command")
 		metrics.Inc("ERROR")
@@ -166,6 +170,12 @@ func processCommand(tokens []string) string {
 		return handlePing(tokens)
 	case ShutDownCommand:
 		return handleShutDown(tokens)
+	case SubscribeCommand:
+		return handleSubscribe(tokens, conn)
+	case UnsubscribeCommand:
+		return handleUnsubscribe(tokens, conn)
+	case PublishCommand:
+		return handlePublish(tokens)
 	default:
 		log.Printf("[WARN] Invalid command: %s\n", cmd)
 		metrics.Inc("ERROR")
@@ -589,7 +599,7 @@ func handleInfo(tokens []string) string {
 			"Uptime: %s\n"+
 			"Active Clients: %d\n"+
 			"Total Commands Processed: %d\n"+
-			"Keys in Store: %d\n",
+			"Keys in Store: %d",
 		ServerVersion,
 		uptime.Truncate(time.Second),
 		activeClients,
@@ -647,6 +657,51 @@ func handleShutDown(tokens []string) string {
 	return "Server shutting down..."
 }
 
+func handleSubscribe(tokens []string, conn net.Conn) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("SUBSCRIBE", "SUBSCRIBE <channel>")
+	}
+
+	channel := tokens[1]
+	pubsub.Subscribe(channel, conn)
+
+	metrics.Inc("SUBSCRIBE")
+	log.Printf("[INFO] %s subscribed to %s\n", getAddress(conn), tokens[1])
+	return fmt.Sprintf("Subscribed to %s", channel)
+}
+
+func handleUnsubscribe(tokens []string, conn net.Conn) string {
+	if len(tokens) != 2 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("UNSUBSCRIBE", "UNSUBSCRIBE <channel>")
+	}
+
+	channel := tokens[1]
+	pubsub.Unsubscribe(channel, conn)
+
+	metrics.Inc("UNSUBSCRIBE")
+	log.Printf("[INFO] %s unsubscribed from %s\n", getAddress(conn), tokens[1])
+	return fmt.Sprintf("Unsubscribed from %s", channel)
+}
+
+func handlePublish(tokens []string) string {
+	if len(tokens) < 3 {
+		metrics.Inc("ERROR")
+		return formatInvalidCommand("PUBLISH", "PUBLISH <channel> <message>")
+	}
+
+	channel := tokens[1]
+
+	messageTokens := tokens[2:]
+	message := strings.Join(messageTokens, " ")
+	count := pubsub.Publish(channel, message)
+
+	metrics.Inc("PUBLISH")
+	log.Printf("[INFO] Published to %s (%d subscribers)\n", channel, count)
+	return fmt.Sprintf("%d", count)
+}
+
 // Helper methods
 func getAddress(conn net.Conn) string {
 	return conn.RemoteAddr().String()
@@ -694,7 +749,7 @@ func statsString() string {
 		sb.WriteString(fmt.Sprintf("%s: %d\n", cmd, count))
 	}
 
-	return sb.String()
+	return sb.String()[:len(sb.String())-1]
 }
 
 func formatInvalidCommand(cmd, expected string) string {

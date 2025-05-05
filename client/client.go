@@ -9,7 +9,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/peterh/liner"
+	"github.com/chzyer/readline"
 )
 
 const (
@@ -41,43 +41,57 @@ func (c *KVClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *KVClient) SendCommand(command string) (string, error) {
+func (c *KVClient) SendCommand(command string) error {
 	_, err := c.conn.Write([]byte(command + "\n"))
 	if err != nil {
-		return "", fmt.Errorf("error sending command: %v", err)
+		return fmt.Errorf("error sending command: %v", err)
 	}
+	return nil
+}
 
-	var response strings.Builder
+func (c *KVClient) Listen(rl *readline.Instance) error {
 	for {
-		line, err := c.reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				return "", fmt.Errorf("server disconnected")
+		var response strings.Builder
+		for {
+			line, err := c.reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					return fmt.Errorf("Server disconnected")
+				}
+				return fmt.Errorf("[ERROR] Reading response: %v", err)
 			}
-			return "", fmt.Errorf("[ERROR] Reading response: %v", err)
+			if strings.TrimSpace(line) == "END" {
+				break
+			}
+			response.WriteString(line)
 		}
-		if strings.TrimSpace(line) == "END" {
-			break
-		}
-		response.WriteString(line)
+		responseString := response.String()
+		responseString = strings.TrimSpace(responseString)
+		rl.Write([]byte("\r\033[K" + responseString + "\n"))
+		rl.Refresh()
 	}
-	return strings.TrimSpace(response.String()), nil
 }
 
 func (c *KVClient) RunInteractive() error {
-	line := liner.NewLiner()
-	defer line.Close()
+	rl, err := readline.New("kv> ")
+	if err != nil {
+		return fmt.Errorf("[ERROR] Failed to initialize readline: %v", err)
+	}
+	defer rl.Close()
 
-	line.SetCtrlCAborts(true)
+	// line := liner.NewLiner()
+	// defer line.Close()
+
+	// line.SetCtrlCAborts(true)
+
+	// Start listening for messages
+	go c.Listen(rl)
+
 	for {
-		cmd, err := line.Prompt("kv> ")
+		cmd, err := rl.Readline()
 		if err != nil {
-			if err == liner.ErrPromptAborted {
-				fmt.Println("Aborted.")
-				break
-			}
 			log.Printf("[ERROR] Error reading input: %v", err)
-			continue
+			break
 		}
 
 		cmd = strings.TrimSpace(cmd)
@@ -87,20 +101,16 @@ func (c *KVClient) RunInteractive() error {
 			break
 		}
 
-		line.AppendHistory(cmd)
-
 		if err := validateInput(cmd); err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		response, err := c.SendCommand(cmd)
+		err = c.SendCommand(cmd)
 		if err != nil {
 			log.Printf("[ERROR] Command failed: %v", err)
 			continue
 		}
-
-		fmt.Println(response)
 	}
 	return nil
 }
